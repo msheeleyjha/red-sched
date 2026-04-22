@@ -8,8 +8,11 @@ A web application for managing referee scheduling for club soccer associations.
 - Role-based access (Assignor, Referee, Pending Referee)
 - Match schedule management (CSV import from Stack Team App)
 - Referee profile management with certification tracking
-- Referee availability marking
-- Assignment workflow
+- Referee availability marking (per-match and full-day)
+- Day-level unavailability tracking
+- Assignment workflow with conflict detection
+- Assignment acknowledgment by referees
+- Overdue acknowledgment tracking (>24 hours)
 - Mobile-responsive design
 
 ## Important Notes
@@ -169,6 +172,34 @@ Common commands:
 - `POST /api/auth/logout` - Sign out
 - `GET /api/auth/me` - Get current user (requires authentication)
 
+### Profile Management
+- `GET /api/profile` - Get current user's profile
+- `PUT /api/profile` - Update current user's profile
+
+### Referee Management (Assignor Only)
+- `GET /api/referees` - List all referees with filtering
+- `PUT /api/referees/{id}` - Update referee status/grade
+
+### Match Management (Assignor Only)
+- `POST /api/matches/import/parse` - Parse CSV file for preview
+- `POST /api/matches/import/confirm` - Confirm and import matches
+- `GET /api/matches` - List all matches with filters
+- `PUT /api/matches/{id}` - Update match details
+- `GET /api/matches/{id}/eligible-referees` - Get eligible referees for a role
+- `GET /api/matches/{match_id}/conflicts` - Check for assignment conflicts
+
+### Referee Availability
+- `GET /api/referee/matches` - Get eligible matches for current referee
+- `POST /api/referee/matches/{id}/availability` - Toggle availability for a match
+- `GET /api/referee/day-unavailability` - Get days marked unavailable
+- `POST /api/referee/day-unavailability/{date}` - Toggle full-day unavailability
+
+### Assignment Operations (Assignor Only)
+- `POST /api/matches/{match_id}/roles/{role_type}/assign` - Assign/reassign/remove referee
+
+### Assignment Acknowledgment (Referee)
+- `POST /api/referee/matches/{match_id}/acknowledge` - Acknowledge assignment
+
 ## User Roles
 
 - **pending_referee**: New user awaiting assignor approval
@@ -192,13 +223,10 @@ Common commands:
 
 ## Next Steps
 
-Epic 1 (Foundation & Authentication) is complete. The following epics will add:
-- Epic 2: Referee profiles and verification
-- Epic 3: Match schedule management
-- Epic 4: Eligibility engine and availability marking
-- Epic 5: Assignment interface
-- Epic 6: Referee assignment view
-- Epic 7: Azure deployment
+Epics 1-6 are complete! The application is feature-complete and ready for deployment.
+
+Remaining:
+- Epic 7: Azure deployment (production infrastructure)
 
 ## License
 

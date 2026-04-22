@@ -1,35 +1,53 @@
 # Getting Started with Referee Scheduler
 
-**Epic 1 is complete!** 🎉
+**Epics 1-6 are complete!** 🎉
 
-You now have a fully functional authentication and role-based routing system. This guide will help you get started.
+You now have a fully functional referee scheduling application with authentication, match management, availability tracking, assignments, and acknowledgments. This guide will help you get started.
 
 ---
 
 ## What You Have
 
+✅ **Complete Referee Scheduling System**
+- Google OAuth2 authentication
+- Referee profile management with certification tracking
+- CSV match import from Stack Team App
+- Automatic age group parsing and role slot configuration
+- Eligibility engine (age-based and certification-based)
+- Referee availability marking (per-match and full-day)
+- Assignment interface with conflict detection
+- Assignment acknowledgment with overdue tracking
+- Mobile-first responsive design
+
 ✅ **Backend API** (Go 1.22)
-- RESTful API with health check
+- 20 RESTful API endpoints
 - Google OAuth2 authentication
 - Session management
-- User database with migrations
-- Role-based access control
+- Role-based access control (assignor/referee/pending)
+- Eligibility computation engine
+- Conflict detection for double-booking
+- Audit trail for all assignments
 
 ✅ **Frontend** (SvelteKit + TypeScript)
-- Mobile-responsive design
-- Google sign-in
-- Role-based routing
-- Three distinct dashboards (assignor, referee, pending)
+- Mobile-responsive design (320px+)
+- Assignor dashboard with match schedule and assignment panel
+- Referee dashboard with availability marking
+- Profile management
+- CSV import with preview
+- Real-time status updates
 
 ✅ **Database** (PostgreSQL 16)
-- Users table with roles and status
-- Automated migrations
-- Health checks
+- Users, matches, match_roles, availability tables
+- Day-level unavailability tracking
+- Assignment history audit trail
+- Automated migrations (5 migration files)
+- Timezone handling (US Eastern)
 
 ✅ **Infrastructure**
 - Docker containerization
 - docker-compose orchestration
 - Development environment ready
+- Production-ready codebase
 
 ---
 
@@ -75,33 +93,53 @@ make up
 
 ```
 ref-sched/
-├── backend/                 # Go API
-│   ├── main.go             # Routes, OAuth, middleware
-│   ├── user.go             # User model & database
-│   ├── migrations/         # SQL migrations
-│   └── Dockerfile          # Backend container
+├── backend/                          # Go API
+│   ├── main.go                      # Routes, OAuth, middleware
+│   ├── user.go                      # User auth & profiles
+│   ├── profile.go                   # Profile endpoints
+│   ├── referees.go                  # Referee management
+│   ├── matches.go                   # Match CRUD & import
+│   ├── eligibility.go               # Eligibility engine
+│   ├── availability.go              # Availability marking
+│   ├── assignments.go               # Assignment operations
+│   ├── acknowledgment.go            # Assignment acknowledgment
+│   ├── day_unavailability.go        # Day-level unavailability
+│   ├── migrations/                  # SQL migrations (5 files)
+│   └── Dockerfile                   # Backend container
 │
-├── frontend/               # SvelteKit app
-│   ├── src/
-│   │   ├── routes/         # Pages
-│   │   │   ├── +page.svelte              # Login
-│   │   │   ├── auth/callback/            # OAuth callback
-│   │   │   ├── pending/                  # Pending activation
-│   │   │   ├── referee/                  # Referee dashboard
-│   │   │   └── assignor/                 # Assignor dashboard
-│   │   ├── app.css         # Global styles
-│   │   └── app.html        # HTML template
-│   └── Dockerfile          # Frontend container
+├── frontend/                         # SvelteKit app
+│   ├── src/routes/
+│   │   ├── +page.svelte             # Login
+│   │   ├── auth/callback/           # OAuth callback
+│   │   ├── pending/                 # Pending activation
+│   │   ├── referee/
+│   │   │   ├── +page.svelte         # Dashboard
+│   │   │   ├── profile/             # Profile management
+│   │   │   └── matches/             # Availability & assignments
+│   │   └── assignor/
+│   │       ├── +page.svelte         # Dashboard
+│   │       ├── referees/            # Referee management
+│   │       └── matches/             # Schedule & assignments
+│   └── Dockerfile                   # Frontend container
 │
-├── docker-compose.yml      # Orchestration
-├── Makefile               # Dev commands
-├── .env                   # Environment config
+├── docker-compose.yml               # Orchestration
+├── Makefile                         # Dev commands
+├── .env                             # Environment config
 │
-└── docs/
+└── Documentation/
+    ├── README.md                         # Project overview
+    ├── PROJECT_STATUS.md                 # Current status (86% complete)
+    ├── STORIES.md                        # All epics and stories
     ├── QUICK_START.md                    # 5-minute guide
     ├── SETUP.md                          # Detailed setup
-    ├── README.md                         # Overview
-    └── EPIC1_IMPLEMENTATION_REPORT.md    # Full implementation details
+    ├── GETTING_STARTED.md                # This file
+    ├── TESTING_GUIDE.md                  # Testing instructions
+    ├── EPIC1_IMPLEMENTATION_REPORT.md    # Epic 1 details
+    ├── EPIC2_IMPLEMENTATION_REPORT.md    # Epic 2 details
+    ├── EPIC3_PROGRESS.md                 # Epic 3 status
+    ├── EPIC4_IMPLEMENTATION_REPORT.md    # Epic 4 details
+    ├── EPIC5_IMPLEMENTATION_REPORT.md    # Epic 5 details
+    └── EPIC6_IMPLEMENTATION_REPORT.md    # Epic 6 details
 ```
 
 ---
@@ -140,14 +178,35 @@ make clean              # Stop and remove all data (!)
 
 ## API Endpoints
 
-### Public
+See `README.md` for complete API documentation. Key endpoints:
+
+### Authentication
 - `GET /health` - Health check
 - `GET /api/auth/google` - Start OAuth flow
 - `GET /api/auth/google/callback` - OAuth callback
-
-### Protected (requires auth)
 - `GET /api/auth/me` - Current user info
 - `POST /api/auth/logout` - Sign out
+
+### Profile & Referee Management
+- `GET /api/profile` - Get/update profile
+- `GET /api/referees` - List referees (assignor only)
+- `PUT /api/referees/{id}` - Update referee (assignor only)
+
+### Match Management (Assignor)
+- `POST /api/matches/import/parse` - Parse CSV
+- `POST /api/matches/import/confirm` - Import matches
+- `GET /api/matches` - List matches
+- `PUT /api/matches/{id}` - Update match
+
+### Availability & Assignments
+- `GET /api/referee/matches` - Get eligible matches
+- `POST /api/referee/matches/{id}/availability` - Mark available
+- `POST /api/matches/{match_id}/roles/{role_type}/assign` - Assign referee
+- `POST /api/referee/matches/{match_id}/acknowledge` - Acknowledge assignment
+
+### Day Unavailability
+- `GET /api/referee/day-unavailability` - List unavailable days
+- `POST /api/referee/day-unavailability/{date}` - Toggle day unavailability
 
 ---
 
@@ -163,60 +222,87 @@ make clean              # Stop and remove all data (!)
 
 ## Database Schema
 
-### Users Table
-```sql
-id              BIGSERIAL PRIMARY KEY
-google_id       VARCHAR(255) UNIQUE NOT NULL
-email           VARCHAR(255) NOT NULL
-name            VARCHAR(255) NOT NULL
-role            VARCHAR(50) DEFAULT 'pending_referee'
-status          VARCHAR(50) DEFAULT 'pending'
-first_name      VARCHAR(100)
-last_name       VARCHAR(100)
-date_of_birth   DATE
-certified       BOOLEAN DEFAULT FALSE
-cert_expiry     DATE
-grade           VARCHAR(20)
-created_at      TIMESTAMP DEFAULT NOW()
-updated_at      TIMESTAMP DEFAULT NOW()
-```
+See `PROJECT_STATUS.md` for complete schema. Key tables:
+
+### Users
+- Profile info: id, google_id, email, name, first_name, last_name, date_of_birth
+- Role & status: role (assignor/referee/pending_referee), status (active/inactive/pending/removed)
+- Certification: certified, cert_expiry, grade
+
+### Matches
+- Match info: event_name, team_name, age_group, match_date, start_time, end_time
+- Location: location, description
+- Status: status (active/cancelled), stack_reference_id
+
+### Match Roles
+- Role assignment: match_id, role_type (center/assistant_1/assistant_2), assigned_referee_id
+- Acknowledgment: acknowledged, acknowledged_at
+
+### Availability
+- Per-match availability: match_id, referee_id, created_at
+
+### Day Unavailability
+- Full-day unavailability: referee_id, unavailable_date, reason, created_at
+
+### Assignment History
+- Audit trail: match_id, role_type, old_referee_id, new_referee_id, action, actor_id, created_at
 
 ---
 
-## What's Implemented (Epic 1)
+## What's Implemented (Epics 1-6)
 
-### Story 1.1 — Project Skeleton ✅
-- Go backend with health endpoint
-- PostgreSQL database with connection management
-- SvelteKit frontend
-- Docker Compose setup
-- Database migrations (golang-migrate)
+### Epic 1 — Foundation & Authentication ✅
+- Google OAuth2 login
+- Session management
+- Role-based routing (assignor/referee/pending)
+- PostgreSQL database with migrations
 
-### Story 1.2 — Google OAuth2 Login ✅
-- Google sign-in button
-- OAuth2 flow with CSRF protection
-- User creation and retrieval
-- Secure session management
-- Sign out functionality
-- Protected routes
+### Epic 2 — Profiles & Verification ✅
+- Referee profile management (DOB, certification, expiry)
+- Assignor referee management view
+- Referee activation, deactivation, removal
+- Grade assignment (Junior/Mid/Senior)
+- Certification expiry flagging
 
-### Story 1.3 — Role-based Routing ✅
-- Three user roles (pending_referee, referee, assignor)
-- Automatic role-based redirects
-- Role enforcement (server-side)
-- Distinct dashboards per role
-- Assignor promotion via CLI
+### Epic 3 — Match Management ✅
+- CSV import from Stack Team App
+- Automatic age group extraction
+- Role slot configuration (U6/U8: 1 CR, U10: 1 CR, U12+: 1 CR + 2 AR)
+- Manual match editing
+- Match cancellation
+- Assignment status badges
+
+### Epic 4 — Eligibility & Availability ✅
+- Age-based eligibility (U10 and younger: age ≥ age_group + 1)
+- Certification-based eligibility (U12+ center: requires valid cert)
+- Referee availability marking
+- Day-level unavailability
+- Eligible matches filtered by profile completion
+
+### Epic 5 — Assignment Interface ✅
+- Assignment panel with role overview
+- Eligible referee picker per role
+- Assign, reassign, remove operations
+- Double-booking conflict detection
+- Assignment audit trail
+
+### Epic 6 — Referee Assignment View & Acknowledgment ✅
+- View assigned matches with full details
+- Assignment acknowledgment by referees
+- Assignor visibility of acknowledgment status
+- Overdue acknowledgment tracking (>24 hours)
+- Day-level unavailability marking
 
 ---
 
-## What's Next (Epic 2)
+## What's Next (Epic 7)
 
-- **Story 2.1**: Referee profile management (DOB, certification)
-- **Story 2.2**: Assignor referee management view
-- **Story 2.3**: Referee activation, deactivation, and grading
-- **Story 2.4**: Certification expiry flagging
+- **Story 7.1**: Production-ready Docker images
+- **Story 7.2**: Azure deployment with HTTPS, managed PostgreSQL, and daily backups
 
-See `STORIES.md` for the full epic breakdown.
+**The MVP is feature-complete!** Only deployment remains.
+
+See `PROJECT_STATUS.md` for detailed status and `STORIES.md` for the full epic breakdown.
 
 ---
 

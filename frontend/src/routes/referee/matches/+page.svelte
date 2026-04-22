@@ -6,6 +6,14 @@
 
 	const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
+	interface ConflictingMatch {
+		match_id: number;
+		event_name: string;
+		team_name: string;
+		start_time: string;
+		role_type: string;
+	}
+
 	interface Match {
 		id: number;
 		event_name: string;
@@ -19,10 +27,13 @@
 		status: string;
 		eligible_roles: string[];
 		is_available: boolean;
+		is_unavailable: boolean;
 		is_assigned: boolean;
 		assigned_role: string | null;
 		acknowledged: boolean;
 		acknowledged_at: string | null;
+		has_conflict?: boolean;
+		conflicting_matches?: ConflictingMatch[];
 	}
 
 	interface GroupedMatches {
@@ -53,7 +64,9 @@
 			});
 
 			if (res.ok) {
-				matches = await res.json();
+				const data = await res.json();
+				// Ensure matches is always an array, even if API returns null
+				matches = data || [];
 				// If matches is empty, check if profile exists
 				if (matches.length === 0) {
 					const profileRes = await fetch(`${API_URL}/api/profile`, { credentials: 'include' });
@@ -93,8 +106,13 @@
 		const newState = !isCurrentlyUnavailable;
 
 		if (newState) {
-			// Marking as unavailable
+			// Marking as unavailable - confirm action
 			if (!confirm(`Mark ${formatDate(date)} as unavailable? This will clear any individual match availability for that day.`)) {
+				return;
+			}
+		} else {
+			// Unmarking - confirm action
+			if (!confirm(`Clear unavailability for ${formatDate(date)}? You can then mark individual matches as available.`)) {
 				return;
 			}
 		}
@@ -128,20 +146,28 @@
 		}
 	}
 
-	async function toggleAvailability(match: Match) {
-		const newAvailability = !match.is_available;
-
+	async function setAvailability(match: Match, available: boolean | null) {
 		try {
 			const res = await fetch(`${API_URL}/api/referee/matches/${match.id}/availability`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				credentials: 'include',
-				body: JSON.stringify({ available: newAvailability })
+				body: JSON.stringify({ available })
 			});
 
 			if (res.ok) {
-				// Update local state
-				match.is_available = newAvailability;
+				// Update local state based on tri-state
+				if (available === true) {
+					match.is_available = true;
+					match.is_unavailable = false;
+				} else if (available === false) {
+					match.is_available = false;
+					match.is_unavailable = true;
+				} else {
+					// null = no preference
+					match.is_available = false;
+					match.is_unavailable = false;
+				}
 				matches = matches; // Trigger reactivity
 			} else {
 				alert('Failed to update availability');
@@ -246,7 +272,14 @@
 	}, {});
 
 	$: assignedMatches = filteredMatches.filter(m => m.is_assigned);
-	$: sortedDates = Object.keys(groupedMatches).sort();
+
+	// Get all unique dates from grouped matches AND unavailable days
+	// This ensures date headers show even when day is marked unavailable
+	$: allDates = new Set([
+		...Object.keys(groupedMatches),
+		...Array.from(unavailableDays)
+	]);
+	$: sortedDates = Array.from(allDates).sort();
 </script>
 
 <svelte:head>
@@ -300,7 +333,44 @@
 
 				<div class="matches-grid">
 					{#each assignedMatches as match}
-						<div class="match-card assigned">
+						<div class="match-card assigned" class:day-unavailable-override={unavailableDays.has(match.match_date)}>
+							<!-- Warning if assigned on unavailable day -->
+							{#if unavailableDays.has(match.match_date)}
+								<div class="unavailable-day-warning">
+									<span class="warning-icon">⚠️</span>
+									<div class="warning-text">
+										<strong>Assigned on Unavailable Day</strong>
+										<p>You marked this day as unavailable, but you've been assigned to this match. Please contact the assignor if this is an error.</p>
+									</div>
+								</div>
+							{/if}
+
+							<!-- Warning if scheduling conflict -->
+							{#if match.has_conflict && match.conflicting_matches && match.conflicting_matches.length > 0}
+								<div class="scheduling-conflict-warning">
+									<span class="warning-icon">⚠️</span>
+									<div class="warning-text">
+										<strong>Scheduling Conflict Detected</strong>
+										<p>This assignment overlaps with {match.conflicting_matches.length} other assignment{match.conflicting_matches.length > 1 ? 's' : ''}:</p>
+										<ul class="conflict-list">
+											{#each match.conflicting_matches as conflict}
+												<li>
+													<strong>{formatTime(conflict.start_time)}</strong> - {conflict.event_name} ({conflict.team_name})
+													{#if conflict.role_type === 'center'}
+														as Center Referee
+													{:else if conflict.role_type === 'assistant_1'}
+														as AR1
+													{:else if conflict.role_type === 'assistant_2'}
+														as AR2
+													{/if}
+												</li>
+											{/each}
+										</ul>
+										<p class="conflict-advice">Please contact the assignor immediately to resolve this conflict before acknowledging.</p>
+									</div>
+								</div>
+							{/if}
+
 							<div class="match-header">
 								<div class="match-title">
 									<h3>{match.event_name}</h3>
@@ -386,34 +456,67 @@
 					<div class="date-group">
 						<div class="date-header-row">
 							<h3 class="date-header">{formatDate(date)}</h3>
-							<button
-								class="btn-day-toggle"
-								on:click={() => toggleDayAvailability(date)}
-								disabled={togglingDayAvailability}
-							>
-								Mark Entire Day Unavailable
-							</button>
+							{#if unavailableDays.has(date)}
+								<button
+									class="btn-day-toggle btn-day-unavailable"
+									on:click={() => toggleDayAvailability(date)}
+									disabled={togglingDayAvailability}
+								>
+									Day Marked Unavailable - Click to Clear
+								</button>
+							{:else}
+								<button
+									class="btn-day-toggle"
+									on:click={() => toggleDayAvailability(date)}
+									disabled={togglingDayAvailability}
+								>
+									Mark Entire Day Unavailable
+								</button>
+							{/if}
 						</div>
 
-						<div class="matches-grid">
-							{#each groupedMatches[date] as match}
-								<div class="match-card" class:available={match.is_available}>
+						{#if unavailableDays.has(date) && !groupedMatches[date]}
+							<!-- Day is marked unavailable and has no matches (filtered out) -->
+							<div class="day-unavailable-message">
+								<p>You have marked this day as unavailable.</p>
+								<p class="small-text">Individual matches for this day are hidden. Click the button above to make yourself available again.</p>
+							</div>
+						{:else if groupedMatches[date] && groupedMatches[date].length > 0}
+							<!-- Show matches for this date -->
+							<div class="matches-grid">
+								{#each groupedMatches[date] as match}
+								<div class="match-card" class:available={match.is_available} class:unavailable={match.is_unavailable}>
 									<div class="match-header">
 										<div class="match-title">
 											<h4>{match.event_name}</h4>
 											<span class="age-badge">{match.age_group}</span>
 										</div>
-										<button
-											class="availability-toggle"
-											class:active={match.is_available}
-											on:click={() => toggleAvailability(match)}
-										>
-											{#if match.is_available}
-												<span class="check">✓</span> Available
-											{:else}
-												Mark Available
-											{/if}
-										</button>
+										<div class="availability-buttons">
+											<button
+												class="btn-availability btn-available"
+												class:active={match.is_available}
+												on:click={() => setAvailability(match, true)}
+												title="Mark as available"
+											>
+												✓
+											</button>
+											<button
+												class="btn-availability btn-unavailable"
+												class:active={match.is_unavailable}
+												on:click={() => setAvailability(match, false)}
+												title="Mark as unavailable"
+											>
+												✗
+											</button>
+											<button
+												class="btn-availability btn-clear"
+												class:active={!match.is_available && !match.is_unavailable}
+												on:click={() => setAvailability(match, null)}
+												title="Clear preference"
+											>
+												—
+											</button>
+										</div>
 									</div>
 
 									<div class="match-details">
@@ -456,7 +559,8 @@
 								</div>
 							{/each}
 						</div>
-					</div>
+					{/if}
+				</div>
 				{/each}
 			{/if}
 		</section>
@@ -599,6 +703,18 @@
 		cursor: not-allowed;
 	}
 
+	.btn-day-unavailable {
+		background-color: #fef2f2;
+		color: #991b1b;
+		border-color: #ef4444;
+		font-weight: 600;
+	}
+
+	.btn-day-unavailable:hover:not(:disabled) {
+		background-color: #fee2e2;
+		border-color: #dc2626;
+	}
+
 	.matches-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -616,6 +732,11 @@
 	.match-card.available {
 		border-color: #10b981;
 		background-color: #f0fdf4;
+	}
+
+	.match-card.unavailable {
+		border-color: #ef4444;
+		background-color: #fef2f2;
 	}
 
 	.match-card.assigned {
@@ -667,31 +788,151 @@
 		color: white;
 	}
 
-	.availability-toggle {
+	.match-card.day-unavailable-override {
+		border: 3px solid #f59e0b;
+	}
+
+	.unavailable-day-warning {
+		background: #fef3c7;
+		border-left: 4px solid #f59e0b;
+		padding: 1rem;
+		margin-bottom: 1rem;
+		display: flex;
+		gap: 0.75rem;
+		align-items: flex-start;
+		border-radius: 0.375rem;
+	}
+
+	.warning-icon {
+		font-size: 1.5rem;
+		flex-shrink: 0;
+	}
+
+	.warning-text {
+		flex: 1;
+	}
+
+	.warning-text strong {
+		display: block;
+		color: #92400e;
+		font-size: 0.95rem;
+		margin-bottom: 0.25rem;
+	}
+
+	.warning-text p {
+		color: #78350f;
+		font-size: 0.875rem;
+		margin: 0;
+		line-height: 1.4;
+	}
+
+	.scheduling-conflict-warning {
+		background: #fee2e2;
+		border-left: 4px solid #dc2626;
+		padding: 1rem;
+		margin-bottom: 1rem;
+		display: flex;
+		gap: 0.75rem;
+		align-items: flex-start;
+		border-radius: 0.375rem;
+	}
+
+	.scheduling-conflict-warning .warning-text strong {
+		color: #991b1b;
+	}
+
+	.scheduling-conflict-warning .warning-text p {
+		color: #7f1d1d;
+	}
+
+	.conflict-list {
+		margin: 0.75rem 0;
+		padding-left: 1.25rem;
+		color: #7f1d1d;
+		font-size: 0.875rem;
+		line-height: 1.6;
+	}
+
+	.conflict-list li {
+		margin-bottom: 0.5rem;
+	}
+
+	.conflict-list strong {
+		color: #991b1b;
+		display: inline;
+	}
+
+	.conflict-advice {
+		margin-top: 0.75rem !important;
+		font-weight: 500;
+		color: #991b1b !important;
+	}
+
+	.match-card.day-unavailable-override {
+		border-color: #f59e0b;
+	}
+
+	.match-card:has(.scheduling-conflict-warning) {
+		border: 3px solid #dc2626;
+	}
+
+	.availability-buttons {
+		display: flex;
+		gap: 0.25rem;
+	}
+
+	.btn-availability {
 		background: white;
 		border: 2px solid #cbd5e1;
 		border-radius: 6px;
-		padding: 0.5rem 1rem;
-		font-size: 0.9rem;
-		font-weight: 600;
+		padding: 0.5rem 0.75rem;
+		font-size: 1.1rem;
+		font-weight: 700;
 		cursor: pointer;
 		transition: all 0.2s;
-		white-space: nowrap;
+		min-width: 40px;
+		line-height: 1;
 	}
 
-	.availability-toggle:hover {
-		border-color: #10b981;
-		color: #10b981;
+	.btn-availability:hover {
+		border-color: #94a3b8;
 	}
 
-	.availability-toggle.active {
+	.btn-available.active {
 		background: #10b981;
 		color: white;
 		border-color: #10b981;
 	}
 
-	.availability-toggle .check {
-		font-size: 1rem;
+	.btn-available:hover:not(.active) {
+		border-color: #10b981;
+		color: #10b981;
+	}
+
+	.btn-unavailable.active {
+		background: #ef4444;
+		color: white;
+		border-color: #ef4444;
+	}
+
+	.btn-unavailable:hover:not(.active) {
+		border-color: #ef4444;
+		color: #ef4444;
+	}
+
+	.btn-clear {
+		color: #6b7280; /* Ensure icon is visible when not active */
+	}
+
+	.btn-clear.active {
+		background: #6b7280;
+		color: white;
+		border-color: #6b7280;
+	}
+
+	.btn-clear:hover:not(.active) {
+		border-color: #6b7280;
+		color: #6b7280;
 	}
 
 	.match-details {
@@ -738,6 +979,26 @@
 	.small-text {
 		font-size: 0.85rem;
 		color: #6b7280;
+	}
+
+	.day-unavailable-message {
+		background: #fef2f2;
+		border: 2px solid #ef4444;
+		border-radius: 8px;
+		padding: 1.5rem;
+		text-align: center;
+		margin-top: 1rem;
+	}
+
+	.day-unavailable-message p {
+		margin: 0.5rem 0;
+		color: #991b1b;
+		font-weight: 500;
+	}
+
+	.day-unavailable-message .small-text {
+		color: #b91c1c;
+		font-weight: 400;
 	}
 
 	.info-box {

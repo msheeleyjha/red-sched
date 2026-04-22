@@ -341,6 +341,37 @@
 		}
 	}
 
+	async function addRoleSlot(roleType: string) {
+		assigning = true;
+		assignmentError = '';
+
+		try {
+			const response = await fetch(
+				`${API_URL}/api/matches/${assignmentMatch.id}/roles/${roleType}/add`,
+				{
+					method: 'POST',
+					credentials: 'include'
+				}
+			);
+
+			if (response.ok) {
+				await loadMatches();
+				// Update assignmentMatch with the refreshed data
+				const refreshedMatch = matches.find(m => m.id === assignmentMatch.id);
+				if (refreshedMatch) {
+					assignmentMatch = refreshedMatch;
+				}
+			} else {
+				const text = await response.text();
+				assignmentError = text || 'Failed to add role slot';
+			}
+		} catch (err) {
+			assignmentError = 'Failed to add role slot';
+		} finally {
+			assigning = false;
+		}
+	}
+
 	async function checkConflict(refereeId: number): Promise<boolean> {
 		try {
 			const response = await fetch(
@@ -666,6 +697,38 @@
 									</div>
 								{/each}
 							{/if}
+
+							<!-- Add AR slots for U10 matches -->
+							{#if assignmentMatch?.age_group && assignmentMatch.age_group <= 'U10'}
+								{@const hasAR1 = sortedRoles.some(r => r.role_type === 'assistant_1')}
+								{@const hasAR2 = sortedRoles.some(r => r.role_type === 'assistant_2')}
+								{#if !hasAR1 || !hasAR2}
+									<div class="add-roles-section">
+										<h4>Optional Assistant Referees</h4>
+										<p class="help-text">U10 matches only require a center referee. You can optionally add AR slots below:</p>
+										<div class="add-roles-buttons">
+											{#if !hasAR1}
+												<button
+													class="btn-small btn-secondary"
+													on:click={() => addRoleSlot('assistant_1')}
+													disabled={assigning}
+												>
+													+ Add AR1 Slot
+												</button>
+											{/if}
+											{#if !hasAR2}
+												<button
+													class="btn-small btn-secondary"
+													on:click={() => addRoleSlot('assistant_2')}
+													disabled={assigning}
+												>
+													+ Add AR2 Slot
+												</button>
+											{/if}
+										</div>
+									</div>
+								{/if}
+							{/if}
 						</div>
 					{:else}
 						<!-- Referee picker view -->
@@ -690,13 +753,16 @@
 											<button
 												class="referee-item"
 												class:has-availability={referee.is_available}
+												class:marked-unavailable={!referee.is_available}
 												on:click={() => assignReferee(referee.id, `${referee.first_name} ${referee.last_name}`)}
 												disabled={assigning}
 											>
 												<div class="referee-info">
 													<div class="referee-name-row">
 														{#if referee.is_available}
-															<span class="availability-badge" title="Marked as available">★</span>
+															<span class="availability-badge available-star" title="Marked as available">★</span>
+														{:else}
+															<span class="availability-badge unavailable-x" title="Marked as unavailable">✗</span>
 														{/if}
 														<span class="referee-name">
 															{referee.first_name}
@@ -715,6 +781,8 @@
 														{/if}
 														{#if referee.is_available}
 															<span class="available-indicator">Available</span>
+														{:else}
+															<span class="unavailable-indicator">Said Unavailable</span>
 														{/if}
 													</div>
 												</div>
@@ -1632,6 +1700,16 @@
 			background-color: #dcfce7;
 		}
 
+		.referee-item.marked-unavailable {
+			background-color: #fef2f2;
+			border-color: #fca5a5;
+		}
+
+		.referee-item.marked-unavailable:hover {
+			border-color: #ef4444;
+			background-color: #fee2e2;
+		}
+
 		.referee-item:not(.ineligible):not(.has-availability):hover {
 			border-color: var(--primary-color);
 			background-color: #eff6ff;
@@ -1669,11 +1747,18 @@
 		}
 
 		.availability-badge {
-			color: #22c55e;
 			font-size: 1.25rem;
 			line-height: 1;
 			display: inline-flex;
 			align-items: center;
+		}
+
+		.availability-badge.available-star {
+			color: #22c55e;
+		}
+
+		.availability-badge.unavailable-x {
+			color: #ef4444;
 		}
 
 		.grade-badge {
@@ -1687,6 +1772,15 @@
 
 		.available-indicator {
 			background-color: #22c55e;
+			color: white;
+			padding: 0.2rem 0.6rem;
+			border-radius: 0.25rem;
+			font-size: 0.8rem;
+			font-weight: 600;
+		}
+
+		.unavailable-indicator {
+			background-color: #ef4444;
 			color: white;
 			padding: 0.2rem 0.6rem;
 			border-radius: 0.25rem;
@@ -1730,6 +1824,33 @@
 			text-align: center;
 			padding: 2rem;
 			color: var(--text-secondary);
+		}
+
+		.add-roles-section {
+			margin-top: 1.5rem;
+			padding: 1.5rem;
+			border: 2px dashed var(--border-color);
+			border-radius: 0.5rem;
+			background-color: #fafafa;
+		}
+
+		.add-roles-section h4 {
+			margin: 0 0 0.5rem 0;
+			font-size: 1rem;
+			font-weight: 600;
+			color: var(--text-primary);
+		}
+
+		.add-roles-section .help-text {
+			margin: 0 0 1rem 0;
+			font-size: 0.875rem;
+			color: var(--text-secondary);
+		}
+
+		.add-roles-buttons {
+			display: flex;
+			gap: 0.5rem;
+			flex-wrap: wrap;
 		}
 
 		@media (max-width: 640px) {

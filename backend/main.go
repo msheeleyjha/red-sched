@@ -131,6 +131,7 @@ func main() {
 
 	// Assignment routes (assignors only)
 	r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/assign", authMiddleware(assignorOnly(assignRefereeHandler))).Methods("POST")
+	r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/add", authMiddleware(assignorOnly(addRoleSlotHandler))).Methods("POST")
 	r.HandleFunc("/api/matches/{match_id}/conflicts", authMiddleware(assignorOnly(getConflictingAssignmentsHandler))).Methods("GET")
 
 	// Setup CORS

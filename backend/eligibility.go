@@ -75,7 +75,7 @@ func getEligibleRefereesHandler(w http.ResponseWriter, r *http.Request) {
 		SELECT
 			u.id, u.first_name, u.last_name, u.email, u.grade,
 			u.date_of_birth, u.certified, u.cert_expiry,
-			COALESCE(a.match_id IS NOT NULL, false) as is_available
+			COALESCE(a.available, false) as is_available
 		FROM users u
 		LEFT JOIN availability a ON a.referee_id = u.id AND a.match_id = $1
 		WHERE (u.role = 'referee' OR u.role = 'assignor')
@@ -84,7 +84,7 @@ func getEligibleRefereesHandler(w http.ResponseWriter, r *http.Request) {
 		  AND u.last_name IS NOT NULL
 		  AND u.date_of_birth IS NOT NULL
 		ORDER BY
-			CASE WHEN a.match_id IS NOT NULL THEN 0 ELSE 1 END,
+			CASE WHEN a.available = true THEN 0 ELSE 1 END,
 			u.last_name, u.first_name
 	`, matchID)
 	if err != nil {

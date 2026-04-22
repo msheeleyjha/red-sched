@@ -457,10 +457,10 @@ Referees see their confirmed assignments; optionally acknowledge them.
 > As a referee, I want to see all matches I've been assigned to with full details so that I know exactly where and when to show up.
 
 **Acceptance Criteria**
-- [ ] Referee sees a list of their confirmed assignments sorted by date.
-- [ ] Each assignment shows: event name, age group, date, start time, meeting time (from description), full venue address, specific field, role (Center / Assistant Referee).
-- [ ] Past assignments are shown in a collapsed or secondary section.
-- [ ] View is mobile-first; all details are readable without horizontal scrolling.
+- [x] Referee sees a list of their confirmed assignments sorted by date.
+- [x] Each assignment shows: event name, age group, date, start time, meeting time (from description), full venue address, specific field, role (Center / Assistant Referee).
+- [x] Past assignments are shown in a collapsed or secondary section.
+- [x] View is mobile-first; all details are readable without horizontal scrolling.
 
 **Dependencies:** 5.3  
 **Size:** S
@@ -472,11 +472,11 @@ Referees see their confirmed assignments; optionally acknowledge them.
 > As a referee, I want to acknowledge my assignment in-app so that the assignor knows I've seen and accepted it.
 
 **Acceptance Criteria**
-- [ ] Each unacknowledged assignment shows an "Acknowledge" button.
-- [ ] Tapping "Acknowledge" records `acknowledged = true` and a timestamp.
-- [ ] The button disappears after acknowledgment; a "Confirmed" indicator replaces it.
-- [ ] In the assignment panel (Story 5.1), each assigned slot shows the referee's acknowledgment status.
-- [ ] Assignments unacknowledged after 24 hours are highlighted in the assignor's schedule view.
+- [x] Each unacknowledged assignment shows an "Acknowledge" button.
+- [x] Tapping "Acknowledge" records `acknowledged = true` and a timestamp.
+- [x] The button disappears after acknowledgment; a "Confirmed" indicator replaces it.
+- [x] In the assignment panel (Story 5.1), each assigned slot shows the referee's acknowledgment status.
+- [x] Assignments unacknowledged after 24 hours are highlighted in the assignor's schedule view.
 
 **Dependencies:** 6.1  
 **Size:** S

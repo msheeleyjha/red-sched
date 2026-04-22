@@ -452,6 +452,13 @@ func listMatchesHandler(w http.ResponseWriter, r *http.Request) {
 
 // getMatchRoles fetches all role slots for a match and determines assignment status
 func getMatchRoles(matchID int64) ([]MatchRole, string) {
+	// First, get the match's age group to determine if ARs are optional
+	var ageGroup sql.NullString
+	err := db.QueryRow("SELECT age_group FROM matches WHERE id = $1", matchID).Scan(&ageGroup)
+	if err != nil {
+		return []MatchRole{}, "unassigned"
+	}
+
 	query := `
 		SELECT mr.id, mr.match_id, mr.role_type, mr.assigned_referee_id,
 		       COALESCE(u.first_name || ' ' || u.last_name, u.name) as referee_name,
@@ -472,6 +479,16 @@ func getMatchRoles(matchID int64) ([]MatchRole, string) {
 	roles := []MatchRole{}
 	totalSlots := 0
 	assignedSlots := 0
+
+	// Determine if this is a U10 match (ARs are optional)
+	isU10OrYounger := false
+	if ageGroup.Valid {
+		ageStr := strings.TrimPrefix(ageGroup.String, "U")
+		age, err := strconv.Atoi(ageStr)
+		if err == nil && age <= 10 {
+			isU10OrYounger = true
+		}
+	}
 
 	for rows.Next() {
 		var role MatchRole
@@ -508,6 +525,13 @@ func getMatchRoles(matchID int64) ([]MatchRole, string) {
 		}
 
 		roles = append(roles, role)
+
+		// For U10 and younger, only count center referee toward assignment status
+		// ARs are optional and don't affect whether match is "full" or "partial"
+		if isU10OrYounger && (role.RoleType == "assistant_1" || role.RoleType == "assistant_2") {
+			// Don't count AR slots toward total for U10
+			continue
+		}
 
 		totalSlots++
 		if role.AssignedRefereeID != nil {
@@ -721,6 +745,66 @@ func updateMatchHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(updated)
+}
+
+// addRoleSlotHandler allows assignor to manually add AR slots to matches (e.g., for U10)
+func addRoleSlotHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	matchID, err := strconv.ParseInt(vars["match_id"], 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid match ID", http.StatusBadRequest)
+		return
+	}
+
+	roleType := vars["role_type"]
+	if roleType != "assistant_1" && roleType != "assistant_2" {
+		http.Error(w, "Can only add assistant referee slots", http.StatusBadRequest)
+		return
+	}
+
+	// Verify match exists and is active
+	var matchExists bool
+	err = db.QueryRow(`
+		SELECT EXISTS(SELECT 1 FROM matches WHERE id = $1 AND status = 'active')
+	`, matchID).Scan(&matchExists)
+
+	if err != nil || !matchExists {
+		http.Error(w, "Match not found or not active", http.StatusNotFound)
+		return
+	}
+
+	// Check if role slot already exists
+	var roleExists bool
+	err = db.QueryRow(`
+		SELECT EXISTS(SELECT 1 FROM match_roles WHERE match_id = $1 AND role_type = $2)
+	`, matchID, roleType).Scan(&roleExists)
+
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if roleExists {
+		http.Error(w, "Role slot already exists for this match", http.StatusBadRequest)
+		return
+	}
+
+	// Create the role slot
+	_, err = db.Exec(
+		"INSERT INTO match_roles (match_id, role_type) VALUES ($1, $2)",
+		matchID, roleType,
+	)
+
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create role slot: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":   true,
+		"role_type": roleType,
+	})
 }
 
 // reconfigureRoleSlots adjusts role slots when age group changes

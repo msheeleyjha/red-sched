@@ -84,18 +84,18 @@ make clean       # Remove all data (DANGER!)
 
 ## What's Next?
 
-Epic 1 is complete! You now have:
-- ✅ Working authentication
-- ✅ Role-based access
-- ✅ Database with migrations
-- ✅ Mobile-responsive UI
+Epics 1-6 are complete! You now have:
+- ✅ Google OAuth2 authentication
+- ✅ Role-based access (assignor/referee/pending)
+- ✅ Referee profile management with certification tracking
+- ✅ CSV match import from Stack Team App
+- ✅ Automatic age group parsing and role slot configuration
+- ✅ Eligibility engine (age-based and certification-based)
+- ✅ Referee availability marking (per-match and full-day)
+- ✅ Assignment interface with conflict detection
+- ✅ Assignment acknowledgment with overdue tracking
+- ✅ Mobile-responsive design
 
-Next epics will add:
-- Epic 2: Referee profiles and management
-- Epic 3: Match schedule import and management
-- Epic 4: Eligibility and availability
-- Epic 5: Assignment interface
-- Epic 6: Referee assignment view
-- Epic 7: Azure deployment
+**The MVP is feature-complete!** Only deployment (Epic 7) remains.
 
-See `EPIC1_IMPLEMENTATION_REPORT.md` for full details.
+See `PROJECT_STATUS.md` for detailed status and all EPIC implementation reports for full details.

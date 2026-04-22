@@ -87,6 +87,31 @@ func assignRefereeHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Check if referee is already assigned to another role on this match
+		var existingRoleType sql.NullString
+		err = db.QueryRow(`
+			SELECT role_type
+			FROM match_roles
+			WHERE match_id = $1
+			  AND assigned_referee_id = $2
+			  AND role_type != $3
+		`, matchID, *req.RefereeID, roleType).Scan(&existingRoleType)
+
+		if err != nil && err != sql.ErrNoRows {
+			http.Error(w, fmt.Sprintf("Database error: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		if existingRoleType.Valid {
+			roleName := map[string]string{
+				"center":      "Center Referee",
+				"assistant_1": "Assistant Referee 1",
+				"assistant_2": "Assistant Referee 2",
+			}
+			http.Error(w, fmt.Sprintf("Referee is already assigned as %s for this match", roleName[existingRoleType.String]), http.StatusBadRequest)
+			return
+		}
+
 		// TODO: Check eligibility (optional for v1, can assign anyone)
 		// TODO: Check for double-booking conflicts (Story 5.4)
 	}
@@ -99,9 +124,13 @@ func assignRefereeHandler(w http.ResponseWriter, r *http.Request) {
 		newRefereeID = sql.NullInt64{Valid: false}
 	}
 
+	// When removing or reassigning, also clear acknowledgment
+	// This ensures a new/different referee must acknowledge the assignment
 	_, err = db.Exec(`
 		UPDATE match_roles
-		SET assigned_referee_id = $1
+		SET assigned_referee_id = $1,
+		    acknowledged = false,
+		    acknowledged_at = NULL
 		WHERE id = $2
 	`, newRefereeID, roleID)
 

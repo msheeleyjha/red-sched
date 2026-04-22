@@ -67,7 +67,9 @@
 			});
 
 			if (response.ok) {
-				matches = await response.json();
+				const data = await response.json();
+				// Ensure matches is always an array, even if API returns null
+				matches = data || [];
 			} else {
 				error = 'Failed to load matches';
 			}

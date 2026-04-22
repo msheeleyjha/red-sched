@@ -7,7 +7,7 @@
 
 ---
 
-## 🎯 Overall Status: 83% COMPLETE
+## 🎯 Overall Status: 86% COMPLETE
 
 **Core MVP**: ✅ **COMPLETE**  
 **Deployment**: ⏸️ Pending (Epic 7)
@@ -23,11 +23,11 @@
 | **Epic 3** - Match Management | ✅ COMPLETE | 80% | 4/5 |
 | **Epic 4** - Eligibility & Availability | ✅ COMPLETE | 100% | 3/3 |
 | **Epic 5** - Assignment Interface | ✅ COMPLETE | 100% | 4/4 |
-| **Epic 6** - Referee Assignment View | ✅ COMPLETE | 100% | 1/2 |
+| **Epic 6** - Referee Assignment View | ✅ COMPLETE | 100% | 2/2 |
 | **Epic 7** - Deployment | ⏸️ PENDING | 0% | 0/2 |
 
-**Total Stories**: 21/23 complete (91%)  
-**MVP Stories**: 20/21 complete (95%) — Story 6.2 is stretch goal  
+**Total Stories**: 22/23 complete (96%)  
+**MVP Stories**: 22/22 complete (100%) — All MVP stories complete!  
 **Required for Launch**: 20/20 complete (100%)
 
 ---
@@ -76,7 +76,10 @@
 
 ### Referee Availability
 - ✅ Referees view only eligible upcoming matches
-- ✅ One-click availability toggle
+- ✅ **Tri-state availability** (available/unavailable/no preference)
+- ✅ Three-button interface for explicit selection (✓ ✗ —)
+- ✅ Color-coded match cards (green/red/gray borders)
+- ✅ One-click to change availability state
 - ✅ Matches grouped by date
 - ✅ Meeting time extraction from description
 - ✅ Field number extraction
@@ -102,6 +105,22 @@
 - ✅ Past assignments viewable
 - ✅ Mobile-first design
 
+### Assignment Acknowledgment
+- ✅ Referees can acknowledge assignments in-app
+- ✅ "Acknowledge Assignment" button on unacknowledged matches
+- ✅ "Confirmed" indicator after acknowledgment
+- ✅ Assignor sees acknowledgment status for all assignments
+- ✅ Overdue tracking (>24 hours unacknowledged)
+- ✅ Warning badges for overdue acknowledgments in assignor view
+
+### Day-Level Unavailability
+- ✅ Referees can mark entire days as unavailable
+- ✅ "Mark Entire Day Unavailable" button per date
+- ✅ Optional reason field for unavailability
+- ✅ Automatically removes individual match availability for that day
+- ✅ Matches on unavailable days excluded from eligible match list
+- ✅ Day unavailability persisted in database
+
 ---
 
 ## ⏸️ What's Pending
@@ -111,12 +130,6 @@
   - Basic reference_id duplicate detection exists
   - Full resolution UI with side-by-side comparison deferred
   - **Decision**: Can be added later if duplicate issues arise in production
-
-### Epic 6 - Stretch Goal
-- ⏸️ **Story 6.2**: Assignment acknowledgment
-  - Referees can acknowledge assignments in-app
-  - Assignor sees acknowledgment status
-  - **Decision**: Deferred to v2 as a nice-to-have feature
 
 ### Epic 7 - Deployment
 - ⏸️ **Story 7.1**: Docker containerization
@@ -164,10 +177,15 @@ ref-sched/
 │   ├── eligibility.go         # Eligibility engine
 │   ├── availability.go        # Availability marking
 │   ├── assignments.go         # Assignment operations
+│   ├── acknowledgment.go      # Assignment acknowledgment
+│   ├── day_unavailability.go  # Day-level unavailability
 │   ├── migrations/            # Database migrations
 │   │   ├── 001_initial_schema.up.sql
 │   │   ├── 002_matches_schema.up.sql
-│   │   └── 003_times_to_text.up.sql
+│   │   ├── 003_times_to_text.up.sql
+│   │   ├── 004_add_acknowledgment.up.sql
+│   │   ├── 005_day_unavailability.up.sql
+│   │   └── 006_tristate_availability.up.sql
 │   ├── Dockerfile
 │   ├── go.mod
 │   └── go.sum
@@ -201,7 +219,8 @@ ref-sched/
     ├── EPIC2_IMPLEMENTATION_REPORT.md
     ├── EPIC3_PROGRESS.md
     ├── EPIC4_IMPLEMENTATION_REPORT.md
-    └── EPIC5_IMPLEMENTATION_REPORT.md
+    ├── EPIC5_IMPLEMENTATION_REPORT.md
+    └── EPIC6_IMPLEMENTATION_REPORT.md
 ```
 
 ---
@@ -253,17 +272,28 @@ ref-sched/
 ### Match Roles Table
 - `id`, `match_id`, `role_type` (center/assistant_1/assistant_2)
 - `assigned_referee_id` (nullable FK to users)
+- `acknowledged` (boolean, default false)
+- `acknowledged_at` (timestamp, nullable)
 - UNIQUE(match_id, role_type)
 
 ### Availability Table
 - `match_id`, `referee_id` (composite PK)
+- `available` (boolean: true=available, false=unavailable)
 - `created_at`
+- Note: No record = no preference (tri-state)
 
 ### Assignment History Table
 - `id`, `match_id`, `role_type`
 - `old_referee_id`, `new_referee_id`
 - `action` (assigned/reassigned/unassigned)
 - `actor_id`, `created_at`
+
+### Day Unavailability Table
+- `id`, `referee_id` (FK to users)
+- `unavailable_date` (date)
+- `reason` (text, nullable)
+- `created_at`
+- UNIQUE(referee_id, unavailable_date)
 
 ---
 
@@ -369,7 +399,6 @@ ref-sched/
 - ⏸️ Backup/restore procedure testing
 
 ### Post-Launch (v1.1+)
-- ⏸️ Story 6.2: Assignment acknowledgment
 - ⏸️ Story 3.2: Enhanced duplicate detection
 - ⏸️ Email notifications (assignment, changes, reminders)
 - ⏸️ Bulk assignment operations
@@ -377,6 +406,7 @@ ref-sched/
 - ⏸️ Referee availability import/export
 - ⏸️ Match schedule templates
 - ⏸️ Reporting dashboard (assignments per referee, match coverage, etc.)
+- ⏸️ Bulk day unavailability (mark multiple days at once)
 
 ---
 
@@ -428,9 +458,9 @@ ref-sched/
 ## 🏆 Success Metrics
 
 **Development Progress**:
-- ✅ 5/7 epics complete (71%)
-- ✅ 21/23 stories complete (91%)
-- ✅ 20/20 MVP stories complete (100%)
+- ✅ 6/7 epics complete (86%)
+- ✅ 22/23 stories complete (96%)
+- ✅ 22/22 MVP stories complete (100%)
 - ✅ All core features working end-to-end
 
 **Code Quality**:
