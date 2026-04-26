@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
 	"log"
 	"net/http"
 )
@@ -27,14 +25,11 @@ type Role struct {
 
 // UserPermissions caches a user's permissions for the current request
 type UserPermissions struct {
-	UserID      int64
-	Roles       []Role
-	Permissions []Permission
+	UserID       int64
+	Roles        []Role
+	Permissions  []Permission
 	IsSuperAdmin bool
 }
-
-// contextKey type for context keys
-type contextKey string
 
 const userPermissionsKey contextKey = "userPermissions"
 
