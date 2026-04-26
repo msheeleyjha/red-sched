@@ -323,12 +323,66 @@ The frontend build shows A11y warnings for modals without keyboard event handler
 
 ---
 
+## Makefile Enhancements
+
+### ✅ seed-superadmin Command Added
+
+**New Command**: `make seed-superadmin`
+
+**Purpose**: Assign Super Admin role to a user by email address (RBAC V2)
+
+**Features**:
+- ✅ Prompts for user email address
+- ✅ Assigns Super Admin role via `user_roles` table
+- ✅ Sets old `role` field to 'assignor' for backward compatibility
+- ✅ Idempotent: safe to run multiple times (ON CONFLICT DO NOTHING)
+- ✅ Clear success/failure feedback
+
+**Test Results**:
+```bash
+# Test 1: Assign Super Admin role to existing user
+$ echo "test@example.com" | make seed-superadmin
+INSERT 0 1
+UPDATE 1
+✓ Super Admin role assigned to test@example.com
+✅ Done
+
+# Test 2: Run again (idempotency test)
+$ echo "test@example.com" | make seed-superadmin
+INSERT 0 0  # 0 rows inserted (already exists)
+UPDATE 1
+✓ Super Admin role assigned to test@example.com
+✅ Done
+
+# Test 3: Non-existent user
+$ echo "nonexistent@example.com" | make seed-superadmin
+INSERT 0 0
+UPDATE 0
+✗ User not found: nonexistent@example.com
+✅ Done
+```
+
+**Verification**:
+```sql
+SELECT u.email, u.name, r.name as role_name
+FROM users u
+JOIN user_roles ur ON u.id = ur.user_id
+JOIN roles r ON ur.role_id = r.id
+WHERE u.email = 'test@example.com';
+
+      email       |    name    |  role_name  
+------------------+------------+-------------
+ test@example.com | Test Admin | Super Admin
+```
+
+---
+
 ## Next Steps
 
 ### Immediate
 1. ✅ Epic 1 complete - all stories delivered and tested
-2. Ready to merge `epic-1-rbac` → `v2` branch
-3. Create first test user and verify role assignment workflow end-to-end
+2. ✅ Makefile command for seeding Super Admin added and tested
+3. Ready to merge `epic-1-rbac` → `v2` branch
 
 ### Epic 2: Audit Logging
 - Implement audit log writes in role assignment APIs (marked with TODO comments)
