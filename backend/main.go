@@ -134,6 +134,13 @@ func main() {
 	r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/add", authMiddleware(assignorOnly(addRoleSlotHandler))).Methods("POST")
 	r.HandleFunc("/api/matches/{match_id}/conflicts", authMiddleware(assignorOnly(getConflictingAssignmentsHandler))).Methods("GET")
 
+	// Epic 1: RBAC Admin routes (requires can_assign_roles permission)
+	r.HandleFunc("/api/admin/users/{id}/roles", requirePermission("can_assign_roles", assignRoleToUser)).Methods("POST")
+	r.HandleFunc("/api/admin/users/{id}/roles/{roleId}", requirePermission("can_assign_roles", revokeRoleFromUser)).Methods("DELETE")
+	r.HandleFunc("/api/admin/users/{id}/roles", requirePermission("can_assign_roles", getUserRoles)).Methods("GET")
+	r.HandleFunc("/api/admin/roles", requirePermission("can_assign_roles", getAllRoles)).Methods("GET")
+	r.HandleFunc("/api/admin/permissions", requirePermission("can_assign_roles", getAllPermissions)).Methods("GET")
+
 	// Setup CORS
 	corsHandler := cors.New(cors.Options{
 		AllowedOrigins:   []string{os.Getenv("FRONTEND_URL")},
