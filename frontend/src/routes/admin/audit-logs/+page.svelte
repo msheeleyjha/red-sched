@@ -55,6 +55,12 @@
 	let exporting = false;
 	let exportWarning = '';
 
+	// Purge modal state
+	let showPurgeModal = false;
+	let purging = false;
+	let purgeResult: any = null;
+	let purgeError = '';
+
 	$: currentUserIsSuperAdmin = data.user?.role === 'assignor' || false;
 
 	onMount(async () => {
@@ -242,18 +248,75 @@
 			exporting = false;
 		}
 	}
+
+	// Purge modal functions
+	function openPurgeModal() {
+		purgeResult = null;
+		purgeError = '';
+		showPurgeModal = true;
+	}
+
+	function closePurgeModal() {
+		showPurgeModal = false;
+		purgeResult = null;
+		purgeError = '';
+	}
+
+	async function handlePurge() {
+		purging = true;
+		purgeError = '';
+		purgeResult = null;
+
+		try {
+			const response = await fetch(`${API_URL}/api/admin/audit-logs/purge`, {
+				method: 'POST',
+				credentials: 'include'
+			});
+
+			if (response.ok) {
+				purgeResult = await response.json();
+				// Reload logs after purge
+				await loadAuditLogs();
+			} else if (response.status === 403) {
+				purgeError = 'Access denied. Only System Admins can purge audit logs.';
+			} else {
+				purgeError = 'Failed to purge audit logs';
+			}
+		} catch (err) {
+			console.error('Error purging audit logs:', err);
+			purgeError = 'Failed to purge audit logs';
+		} finally {
+			purging = false;
+		}
+	}
+
+	function formatDuration(ms: number): string {
+		if (ms < 1000) {
+			return `${ms}ms`;
+		}
+		const seconds = (ms / 1000).toFixed(2);
+		return `${seconds}s`;
+	}
 </script>
 
 <div class="container mx-auto p-6 max-w-7xl">
 	<div class="flex justify-between items-center mb-6">
 		<h1 class="text-3xl font-bold">Audit Logs</h1>
 		{#if currentUserIsSuperAdmin}
-			<button
-				on:click={openExportModal}
-				class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-			>
-				Export
-			</button>
+			<div class="flex gap-3">
+				<button
+					on:click={openExportModal}
+					class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+				>
+					Export
+				</button>
+				<button
+					on:click={openPurgeModal}
+					class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+				>
+					Purge Old Logs
+				</button>
+			</div>
 		{/if}
 	</div>
 
@@ -622,6 +685,87 @@
 					>
 						{exporting ? 'Exporting...' : 'Export'}
 					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Purge Modal -->
+{#if showPurgeModal}
+	<div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" on:click={closePurgeModal}>
+		<div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white" on:click|stopPropagation>
+			<div class="mt-3">
+				<h3 class="text-lg font-medium leading-6 text-gray-900 mb-4">
+					Purge Old Audit Logs
+				</h3>
+
+				{#if purgeError}
+					<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4" role="alert">
+						<p class="text-sm">{purgeError}</p>
+					</div>
+				{/if}
+
+				{#if purgeResult}
+					<div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4" role="alert">
+						<p class="font-semibold mb-2">Purge Completed Successfully!</p>
+						<ul class="text-sm space-y-1">
+							<li><strong>Deleted:</strong> {purgeResult.deleted_count.toLocaleString()} log entries</li>
+							<li><strong>Cutoff Date:</strong> {new Date(purgeResult.cutoff_date).toLocaleDateString()}</li>
+							<li><strong>Duration:</strong> {formatDuration(purgeResult.duration_ms)}</li>
+						</ul>
+					</div>
+				{:else if !purging}
+					<div class="bg-yellow-50 border border-yellow-200 px-4 py-3 rounded mb-4">
+						<p class="text-sm text-yellow-800 mb-3">
+							<strong>⚠️ Warning:</strong> This action will permanently delete audit logs older than the configured retention period.
+						</p>
+						<p class="text-sm text-gray-700 mb-2">
+							<strong>Current Retention Policy:</strong>
+						</p>
+						<p class="text-sm text-gray-600">
+							Logs older than <strong>2 years</strong> will be deleted.
+						</p>
+					</div>
+
+					<div class="bg-blue-50 border border-blue-200 px-4 py-3 rounded mb-4">
+						<p class="text-sm text-blue-800">
+							<strong>Note:</strong> This operation may take a few seconds for large datasets. The deletion is batched to minimize database impact.
+						</p>
+					</div>
+				{/if}
+
+				{#if purging}
+					<div class="flex items-center justify-center py-6">
+						<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+						<p class="ml-4 text-gray-700">Purging old logs...</p>
+					</div>
+				{/if}
+
+				<div class="flex justify-end gap-3 mt-4">
+					{#if purgeResult}
+						<button
+							on:click={closePurgeModal}
+							class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+						>
+							Close
+						</button>
+					{:else}
+						<button
+							on:click={closePurgeModal}
+							class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 disabled:opacity-50"
+							disabled={purging}
+						>
+							Cancel
+						</button>
+						<button
+							on:click={handlePurge}
+							class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:bg-gray-400"
+							disabled={purging}
+						>
+							{purging ? 'Purging...' : 'Confirm Purge'}
+						</button>
+					{/if}
 				</div>
 			</div>
 		</div>

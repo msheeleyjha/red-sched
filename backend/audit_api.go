@@ -436,3 +436,26 @@ func ptrToString(ptr interface{}) string {
 
 	return ""
 }
+
+// purgeAuditLogsHandler manually triggers audit log purge (admin only)
+// POST /api/admin/audit-logs/purge
+func purgeAuditLogsHandler(w http.ResponseWriter, r *http.Request) {
+	// Trigger purge via the retention service
+	if retentionService == nil {
+		http.Error(w, "Retention service not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	log.Println("Manual audit log purge triggered by admin")
+
+	result, err := retentionService.PurgeOldLogs()
+	if err != nil {
+		log.Printf("Error during manual purge: %v", err)
+		http.Error(w, "Failed to purge audit logs", http.StatusInternalServerError)
+		return
+	}
+
+	// Return purge statistics
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}

@@ -22,10 +22,11 @@ import (
 )
 
 var (
-	db           *sql.DB
-	sessionStore *sessions.CookieStore
-	oauth2Config *oauth2.Config
-	auditLogger  *AuditLogger
+	db               *sql.DB
+	sessionStore     *sessions.CookieStore
+	oauth2Config     *oauth2.Config
+	auditLogger      *AuditLogger
+	retentionService *AuditRetentionService
 )
 
 func main() {
@@ -66,6 +67,12 @@ func main() {
 	auditLogger = NewAuditLogger(db)
 	defer auditLogger.Close()
 	log.Println("Audit logger initialized")
+
+	// Initialize audit retention service
+	retentionService = NewAuditRetentionService(db)
+	retentionService.Start()
+	defer retentionService.Stop()
+	log.Println("Audit retention service started")
 
 	// Initialize session store
 	sessionSecret := os.Getenv("SESSION_SECRET")
@@ -150,6 +157,7 @@ func main() {
 	// Epic 2: Audit Logging routes (requires can_view_audit_logs permission)
 	r.HandleFunc("/api/admin/audit-logs", requirePermission("can_view_audit_logs", getAuditLogsHandler)).Methods("GET")
 	r.HandleFunc("/api/admin/audit-logs/export", requirePermission("can_view_audit_logs", exportAuditLogsHandler)).Methods("GET")
+	r.HandleFunc("/api/admin/audit-logs/purge", requirePermission("can_view_audit_logs", purgeAuditLogsHandler)).Methods("POST")
 
 	// Setup CORS
 	corsHandler := cors.New(cors.Options{
