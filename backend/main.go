@@ -6,60 +6,47 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"strings"
 	"time"
 
-	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	_ "github.com/lib/pq"
-	"github.com/rs/cors"
+	"github.com/msheeley/referee-scheduler/shared/config"
+	"github.com/msheeley/referee-scheduler/shared/database"
+	"github.com/msheeley/referee-scheduler/shared/middleware"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
 
 var (
+	cfg              *config.Config
 	db               *sql.DB
 	sessionStore     *sessions.CookieStore
 	oauth2Config     *oauth2.Config
 	auditLogger      *AuditLogger
 	retentionService *AuditRetentionService
+
+	// Middleware instances
+	authMW *middleware.AuthMiddleware
+	rbacMW *middleware.RBACMiddleware
 )
 
 func main() {
-	// Initialize database
-	var err error
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		log.Fatal("DATABASE_URL environment variable is required")
-	}
+	// Load configuration
+	cfg = config.Load()
 
-	// Append timezone parameter to ensure all time operations use Eastern Time
-	if !strings.Contains(dbURL, "timezone=") {
-		if strings.Contains(dbURL, "?") {
-			dbURL += "&timezone=America/New_York"
-		} else {
-			dbURL += "?timezone=America/New_York"
-		}
-	}
-
-	db, err = sql.Open("postgres", dbURL)
+	// Connect to database
+	dbConn, err := database.Connect(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer db.Close()
+	defer dbConn.Close()
 
-	// Test database connection
-	if err = db.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
-	}
-	log.Println("Database connection established")
+	// Set global db variable (will be removed when features are refactored)
+	db = dbConn.DB
 
 	// Run migrations
-	if err := runMigrations(dbURL); err != nil {
+	if err := database.RunMigrations(cfg.DatabaseURL); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
@@ -69,44 +56,36 @@ func main() {
 	log.Println("Audit logger initialized")
 
 	// Initialize audit retention service
-	retentionService = NewAuditRetentionService(db)
+	retentionService = NewAuditRetentionService(db, cfg.AuditRetentionDays)
 	retentionService.Start()
 	defer retentionService.Stop()
 	log.Println("Audit retention service started")
 
 	// Initialize session store
-	sessionSecret := os.Getenv("SESSION_SECRET")
-	if sessionSecret == "" {
-		log.Fatal("SESSION_SECRET environment variable is required")
-	}
-	sessionStore = sessions.NewCookieStore([]byte(sessionSecret))
+	sessionStore = sessions.NewCookieStore([]byte(cfg.SessionSecret))
 	sessionStore.Options = &sessions.Options{
 		Path:     "/",
 		MaxAge:   86400 * 7, // 7 days
 		HttpOnly: true,
-		Secure:   os.Getenv("ENV") == "production",
+		Secure:   cfg.IsProduction(),
 		SameSite: http.SameSiteLaxMode,
 	}
 
 	// Initialize OAuth2 config
-	clientID := os.Getenv("GOOGLE_CLIENT_ID")
-	clientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
-	redirectURL := os.Getenv("GOOGLE_REDIRECT_URL")
-
-	if clientID == "" || clientSecret == "" || redirectURL == "" {
-		log.Fatal("GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URL are required")
-	}
-
 	oauth2Config = &oauth2.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		RedirectURL:  redirectURL,
+		ClientID:     cfg.GoogleClientID,
+		ClientSecret: cfg.GoogleClientSecret,
+		RedirectURL:  cfg.GoogleRedirectURL,
 		Scopes: []string{
 			"https://www.googleapis.com/auth/userinfo.email",
 			"https://www.googleapis.com/auth/userinfo.profile",
 		},
 		Endpoint: google.Endpoint,
 	}
+
+	// Initialize middleware
+	authMW = middleware.NewAuthMiddleware(sessionStore, db)
+	rbacMW = middleware.NewRBACMiddleware(sessionStore, db)
 
 	// Setup router
 	r := mux.NewRouter()
@@ -160,50 +139,13 @@ func main() {
 	r.HandleFunc("/api/admin/audit-logs/purge", requirePermission("can_view_audit_logs", purgeAuditLogsHandler)).Methods("POST")
 
 	// Setup CORS
-	corsHandler := cors.New(cors.Options{
-		AllowedOrigins:   []string{os.Getenv("FRONTEND_URL")},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type", "Authorization"},
-		AllowCredentials: true,
-	})
+	corsHandler := middleware.NewCORSHandler(cfg.FrontendURL)
 
 	// Start server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	log.Printf("Server starting on port %s", port)
-	if err := http.ListenAndServe(":"+port, corsHandler.Handler(r)); err != nil {
+	log.Printf("Server starting on port %s", cfg.Port)
+	if err := http.ListenAndServe(":"+cfg.Port, corsHandler.Handler(r)); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
-}
-
-func runMigrations(dbURL string) error {
-	db, err := sql.Open("postgres", dbURL)
-	if err != nil {
-		return fmt.Errorf("failed to open db for migrations: %w", err)
-	}
-	defer db.Close()
-
-	driver, err := postgres.WithInstance(db, &postgres.Config{})
-	if err != nil {
-		return fmt.Errorf("failed to create migration driver: %w", err)
-	}
-
-	m, err := migrate.NewWithDatabaseInstance(
-		"file://migrations",
-		"postgres", driver)
-	if err != nil {
-		return fmt.Errorf("failed to create migration instance: %w", err)
-	}
-
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("failed to run migrations: %w", err)
-	}
-
-	log.Println("Migrations completed successfully")
-	return nil
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -289,8 +231,7 @@ func googleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Redirect to frontend
-	frontendURL := os.Getenv("FRONTEND_URL")
-	http.Redirect(w, r, frontendURL+"/auth/callback", http.StatusTemporaryRedirect)
+	http.Redirect(w, r, cfg.FrontendURL+"/auth/callback", http.StatusTemporaryRedirect)
 }
 
 func logoutHandler(w http.ResponseWriter, r *http.Request) {

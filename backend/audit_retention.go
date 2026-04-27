@@ -4,8 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"os"
-	"strconv"
 	"time"
 )
 
@@ -32,19 +30,7 @@ type PurgeResult struct {
 }
 
 // NewAuditRetentionService creates a new retention service
-func NewAuditRetentionService(db *sql.DB) *AuditRetentionService {
-	retentionDays := defaultRetentionDays
-
-	// Read from environment variable
-	if retentionEnv := os.Getenv("AUDIT_RETENTION_DAYS"); retentionEnv != "" {
-		if days, err := strconv.Atoi(retentionEnv); err == nil && days > 0 {
-			retentionDays = days
-			log.Printf("Audit retention period set to %d days from environment", days)
-		} else {
-			log.Printf("Invalid AUDIT_RETENTION_DAYS value, using default: %d days", defaultRetentionDays)
-		}
-	}
-
+func NewAuditRetentionService(db *sql.DB, retentionDays int) *AuditRetentionService {
 	service := &AuditRetentionService{
 		db:            db,
 		retentionDays: retentionDays,
