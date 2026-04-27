@@ -5,10 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/gorilla/mux"
+	"github.com/msheeley/referee-scheduler/features/eligibility"
 )
 
 // ConflictingMatch represents another assignment that conflicts with this one
@@ -148,19 +147,29 @@ func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request)
 		// Check eligibility for each role type
 		eligibleRoles := []string{}
 
+		// Convert DOB to string format for eligibility check
+		dobStr := referee.DOB.Format("2006-01-02")
+
+		// Convert cert expiry to string format (if valid)
+		var certExpiryStr *string
+		if referee.CertExpiry.Valid {
+			certStr := referee.CertExpiry.Time.Format("2006-01-02")
+			certExpiryStr = &certStr
+		}
+
 		// Check center role
-		isEligible, _ := checkEligibility(
+		isEligible, _ := eligibility.CheckEligibility(
 			m.AgeGroup, "center", matchDate,
-			referee.DOB, referee.Certified, referee.CertExpiry,
+			&dobStr, referee.Certified, certExpiryStr,
 		)
 		if isEligible {
 			eligibleRoles = append(eligibleRoles, "center")
 		}
 
 		// Check assistant roles (both use same logic)
-		isEligible, _ = checkEligibility(
+		isEligible, _ = eligibility.CheckEligibility(
 			m.AgeGroup, "assistant_1", matchDate,
-			referee.DOB, referee.Certified, referee.CertExpiry,
+			&dobStr, referee.Certified, certExpiryStr,
 		)
 		if isEligible {
 			eligibleRoles = append(eligibleRoles, "assistant")
@@ -268,75 +277,4 @@ func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(matches)
-}
-
-// toggleAvailabilityHandler marks or unmarks a referee's availability for a match
-func toggleAvailabilityHandler(w http.ResponseWriter, r *http.Request) {
-	user := r.Context().Value(userContextKey).(*User)
-
-	vars := mux.Vars(r)
-	matchID, err := strconv.ParseInt(vars["id"], 10, 64)
-	if err != nil {
-		http.Error(w, "Invalid match ID", http.StatusBadRequest)
-		return
-	}
-
-	var req struct {
-		Available *bool `json:"available"` // Pointer to support tri-state: true=available, false=unavailable, null=no preference
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Verify match exists and is active
-	var matchExists bool
-	err = db.QueryRow(`
-		SELECT EXISTS(
-			SELECT 1 FROM matches
-			WHERE id = $1 AND status = 'active' AND match_date >= CURRENT_DATE
-		)
-	`, matchID).Scan(&matchExists)
-
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Database error: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	if !matchExists {
-		http.Error(w, "Match not found or not available for marking", http.StatusNotFound)
-		return
-	}
-
-	// Tri-state logic:
-	// - available = true  → insert/update with available=true (mark available)
-	// - available = false → insert/update with available=false (mark unavailable)
-	// - available = null  → delete record (clear preference)
-	if req.Available == nil {
-		// Clear preference: delete the availability record
-		_, err = db.Exec(`
-			DELETE FROM availability
-			WHERE match_id = $1 AND referee_id = $2
-		`, matchID, user.ID)
-	} else {
-		// Insert or update availability record with explicit available flag
-		_, err = db.Exec(`
-			INSERT INTO availability (match_id, referee_id, available, created_at)
-			VALUES ($1, $2, $3, NOW())
-			ON CONFLICT (match_id, referee_id)
-			DO UPDATE SET available = $3, created_at = NOW()
-		`, matchID, user.ID, *req.Available)
-	}
-
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Database error: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success":   true,
-		"available": req.Available,
-	})
 }

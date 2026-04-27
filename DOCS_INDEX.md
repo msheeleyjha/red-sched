@@ -8,6 +8,7 @@ Complete guide to all documentation in this project.
 |----------|---------|----------|
 | **[README.md](README.md)** | Project overview, features, and quick start | Everyone |
 | **[GETTING_STARTED.md](GETTING_STARTED.md)** | Comprehensive setup guide | New developers |
+| **[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)** | Complete developer onboarding with code examples | Developers |
 | **[QUICK_START.md](QUICK_START.md)** | 5-minute quick start | Developers |
 
 ## 🚀 Deployment
@@ -29,7 +30,11 @@ Complete guide to all documentation in this project.
 
 | Document | Purpose |
 |----------|---------|
-| **[docs/architecture/](docs/architecture/)** | Technical architecture documentation |
+| **[ARCHITECTURE.md](ARCHITECTURE.md)** | Vertical Slice Architecture documentation (Epic 8) |
+| **[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md)** | Developer onboarding with architecture examples |
+| **[API_REFERENCE.md](API_REFERENCE.md)** | Complete API endpoint reference |
+| **[EPIC_8_PROGRESS.md](EPIC_8_PROGRESS.md)** | Vertical slice refactoring progress (91% complete) |
+| **[docs/architecture/](docs/architecture/)** | Additional technical architecture documentation |
 | **[docs/architecture/adr/](docs/architecture/adr/)** | Architecture decision records |
 | **[docs/implementation-reports/](docs/implementation-reports/)** | Epic-by-epic implementation details |
 
@@ -65,10 +70,11 @@ Session summaries, bug fixes, and development notes:
 3. Check [TESTING_GUIDE.md](TESTING_GUIDE.md)
 
 ### 👨‍💻 Developer
-1. Read [GETTING_STARTED.md](GETTING_STARTED.md)
-2. Check [PROJECT_STATUS.md](PROJECT_STATUS.md) for current state
-3. Review [docs/architecture/](docs/architecture/) for technical details
+1. Read [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - Complete onboarding guide
+2. Review [ARCHITECTURE.md](ARCHITECTURE.md) - Vertical slice architecture
+3. Check [PROJECT_STATUS.md](PROJECT_STATUS.md) for current state
 4. Browse [STORIES.md](STORIES.md) for feature requirements
+5. See [EPIC_8_PROGRESS.md](EPIC_8_PROGRESS.md) for architecture migration status
 
 ### 🚀 DevOps/Deployer
 1. Start with [DEPLOYMENT.md](DEPLOYMENT.md)
@@ -84,4 +90,4 @@ Session summaries, bug fixes, and development notes:
 
 ---
 
-**Last Updated**: 2026-04-23
+**Last Updated**: 2026-04-27

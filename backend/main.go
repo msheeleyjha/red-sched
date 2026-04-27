@@ -151,38 +151,8 @@ func main() {
 	availabilityHandler.RegisterRoutes(r, authMiddleware)
 	eligibilityHandler.RegisterRoutes(r, authMiddleware, requirePermission)
 
-	// Referee management routes - moved to referees feature slice
-	// Old routes commented out (now handled by refereesHandler):
-	// r.HandleFunc("/api/referees", authMiddleware(assignorOnly(listRefereesHandler))).Methods("GET")
-	// r.HandleFunc("/api/referees/{id}", authMiddleware(assignorOnly(updateRefereeHandler))).Methods("PUT")
-
-	// Match management routes - moved to matches feature slice
-	// Old routes commented out (now handled by matchesHandler):
-	// r.HandleFunc("/api/matches/import/parse", authMiddleware(assignorOnly(parseCSVHandler))).Methods("POST")
-	// r.HandleFunc("/api/matches/import/confirm", authMiddleware(assignorOnly(importMatchesHandler))).Methods("POST")
-	// r.HandleFunc("/api/matches", authMiddleware(assignorOnly(listMatchesHandler))).Methods("GET")
-	// r.HandleFunc("/api/matches/{id}", authMiddleware(assignorOnly(updateMatchHandler))).Methods("PUT")
-	// r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/add", authMiddleware(assignorOnly(addRoleSlotHandler))).Methods("POST")
-
-	// Eligibility check route - moved to eligibility feature slice
-	// Old route commented out (now handled by eligibilityHandler):
-	// r.HandleFunc("/api/matches/{id}/eligible-referees", authMiddleware(assignorOnly(getEligibleRefereesHandler))).Methods("GET")
-
-	// Referee availability routes - moved to availability feature slice
-	// Old routes commented out (now handled by availabilityHandler):
+	// TODO: Migrate this route to availability feature
 	r.HandleFunc("/api/referee/matches", authMiddleware(getEligibleMatchesForRefereeHandler)).Methods("GET")
-	// r.HandleFunc("/api/referee/matches/{id}/availability", authMiddleware(toggleAvailabilityHandler)).Methods("POST")
-	// r.HandleFunc("/api/referee/day-unavailability", authMiddleware(getDayUnavailabilityHandler)).Methods("GET")
-	// r.HandleFunc("/api/referee/day-unavailability/{date}", authMiddleware(toggleDayUnavailabilityHandler)).Methods("POST")
-
-	// Referee acknowledgment routes - moved to acknowledgment feature slice
-	// Old routes commented out (now handled by acknowledgmentHandler):
-	// r.HandleFunc("/api/referee/matches/{match_id}/acknowledge", authMiddleware(acknowledgeAssignmentHandler)).Methods("POST")
-
-	// Assignment routes - moved to assignments feature slice
-	// Old routes commented out (now handled by assignmentsHandler):
-	// r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/assign", authMiddleware(assignorOnly(assignRefereeHandler))).Methods("POST")
-	// r.HandleFunc("/api/matches/{match_id}/conflicts", authMiddleware(assignorOnly(getConflictingAssignmentsHandler))).Methods("GET")
 
 	// Epic 1: RBAC Admin routes (requires can_assign_roles permission)
 	r.HandleFunc("/api/admin/users/{id}/roles", requirePermission("can_assign_roles", assignRoleToUser)).Methods("POST")
@@ -308,17 +278,6 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "logged out"})
 }
 
-func meHandler(w http.ResponseWriter, r *http.Request) {
-	user := r.Context().Value(userContextKey).(*User)
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":    user.ID,
-		"email": user.Email,
-		"name":  user.Name,
-		"role":  user.Role,
-	})
-}
-
 // Middleware
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -345,19 +304,5 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		ctx := r.Context()
 		ctx = contextWithUser(ctx, user)
 		next.ServeHTTP(w, r.WithContext(ctx))
-	}
-}
-
-// assignorOnly middleware ensures only assignors can access the route
-func assignorOnly(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		user := r.Context().Value(userContextKey).(*User)
-
-		if user.Role != "assignor" {
-			http.Error(w, "Forbidden: Assignor access required", http.StatusForbidden)
-			return
-		}
-
-		next.ServeHTTP(w, r)
 	}
 }
