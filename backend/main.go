@@ -149,6 +149,7 @@ func main() {
 
 	// Epic 2: Audit Logging routes (requires can_view_audit_logs permission)
 	r.HandleFunc("/api/admin/audit-logs", requirePermission("can_view_audit_logs", getAuditLogsHandler)).Methods("GET")
+	r.HandleFunc("/api/admin/audit-logs/export", requirePermission("can_view_audit_logs", exportAuditLogsHandler)).Methods("GET")
 
 	// Setup CORS
 	corsHandler := cors.New(cors.Options{

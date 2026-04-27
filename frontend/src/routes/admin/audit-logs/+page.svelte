@@ -49,6 +49,12 @@
 	// Available entity types (will be populated from API)
 	let entityTypes: string[] = [];
 
+	// Export modal state
+	let showExportModal = false;
+	let exportFormat: 'csv' | 'json' = 'csv';
+	let exporting = false;
+	let exportWarning = '';
+
 	$: currentUserIsSuperAdmin = data.user?.role === 'assignor' || false;
 
 	onMount(async () => {
@@ -160,11 +166,95 @@
 		if (!obj) return 'N/A';
 		return JSON.stringify(obj, null, 2);
 	}
+
+	function openExportModal() {
+		exportWarning = '';
+		showExportModal = true;
+	}
+
+	function closeExportModal() {
+		showExportModal = false;
+		exportFormat = 'csv';
+		exportWarning = '';
+	}
+
+	async function handleExport() {
+		exporting = true;
+		exportWarning = '';
+
+		try {
+			// Build query parameters with same filters as viewer
+			const params = new URLSearchParams({
+				format: exportFormat
+			});
+
+			if (filterUserId) params.append('user_id', filterUserId);
+			if (filterEntityType) params.append('entity_type', filterEntityType);
+			if (filterActionType) params.append('action_type', filterActionType);
+			if (filterStartDate) params.append('start_date', filterStartDate);
+			if (filterEndDate) params.append('end_date', filterEndDate);
+
+			const response = await fetch(`${API_URL}/api/admin/audit-logs/export?${params}`, {
+				credentials: 'include'
+			});
+
+			if (response.ok) {
+				// Check for warning header
+				const warningHeader = response.headers.get('X-Export-Warning');
+				if (warningHeader) {
+					exportWarning = warningHeader;
+				}
+
+				// Get filename from Content-Disposition header
+				const contentDisposition = response.headers.get('Content-Disposition');
+				let filename = `audit_logs.${exportFormat}`;
+				if (contentDisposition) {
+					const matches = /filename="([^"]+)"/.exec(contentDisposition);
+					if (matches && matches[1]) {
+						filename = matches[1];
+					}
+				}
+
+				// Download file
+				const blob = await response.blob();
+				const url = window.URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = filename;
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				window.URL.revokeObjectURL(url);
+
+				// Close modal if no warning, otherwise keep open to show warning
+				if (!exportWarning) {
+					closeExportModal();
+				}
+			} else if (response.status === 403) {
+				exportWarning = 'Access denied. Only System Admins can export audit logs.';
+			} else {
+				exportWarning = 'Failed to export audit logs';
+			}
+		} catch (err) {
+			console.error('Error exporting audit logs:', err);
+			exportWarning = 'Failed to export audit logs';
+		} finally {
+			exporting = false;
+		}
+	}
 </script>
 
 <div class="container mx-auto p-6 max-w-7xl">
 	<div class="flex justify-between items-center mb-6">
 		<h1 class="text-3xl font-bold">Audit Logs</h1>
+		{#if currentUserIsSuperAdmin}
+			<button
+				on:click={openExportModal}
+				class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+			>
+				Export
+			</button>
+		{/if}
 	</div>
 
 	{#if error}
@@ -429,3 +519,111 @@
 <style>
 	/* Additional styles if needed */
 </style>
+
+<!-- Export Modal -->
+{#if showExportModal}
+	<div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" on:click={closeExportModal}>
+		<div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white" on:click|stopPropagation>
+			<div class="mt-3">
+				<h3 class="text-lg font-medium leading-6 text-gray-900 mb-4">
+					Export Audit Logs
+				</h3>
+
+				{#if exportWarning}
+					<div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4" role="alert">
+						<p class="text-sm">{exportWarning}</p>
+					</div>
+				{/if}
+
+				<div class="mb-4">
+					<p class="text-sm text-gray-600 mb-3">
+						Select export format for the current filtered results:
+					</p>
+
+					<div class="space-y-2">
+						<label class="flex items-center cursor-pointer">
+							<input
+								type="radio"
+								name="exportFormat"
+								value="csv"
+								bind:group={exportFormat}
+								class="mr-3"
+							/>
+							<div>
+								<div class="font-medium">CSV (Comma-Separated Values)</div>
+								<div class="text-sm text-gray-600">
+									Suitable for Excel and data analysis tools
+								</div>
+							</div>
+						</label>
+
+						<label class="flex items-center cursor-pointer">
+							<input
+								type="radio"
+								name="exportFormat"
+								value="json"
+								bind:group={exportFormat}
+								class="mr-3"
+							/>
+							<div>
+								<div class="font-medium">JSON (JavaScript Object Notation)</div>
+								<div class="text-sm text-gray-600">
+									Suitable for programmatic processing
+								</div>
+							</div>
+						</label>
+					</div>
+				</div>
+
+				<div class="bg-blue-50 border border-blue-200 px-4 py-3 rounded mb-4">
+					<p class="text-sm text-blue-800">
+						<strong>Note:</strong> Export is limited to 10,000 records. If more records
+						match your filters, only the first 10,000 will be exported.
+					</p>
+				</div>
+
+				{#if filterEntityType || filterActionType || filterUserId || filterStartDate || filterEndDate}
+					<div class="bg-gray-50 border border-gray-200 px-4 py-3 rounded mb-4">
+						<p class="text-sm text-gray-700">
+							<strong>Active Filters:</strong>
+						</p>
+						<ul class="text-sm text-gray-600 mt-1 list-disc list-inside">
+							{#if filterEntityType}
+								<li>Entity Type: {filterEntityType}</li>
+							{/if}
+							{#if filterActionType}
+								<li>Action Type: {filterActionType}</li>
+							{/if}
+							{#if filterUserId}
+								<li>User ID: {filterUserId}</li>
+							{/if}
+							{#if filterStartDate}
+								<li>Start Date: {filterStartDate}</li>
+							{/if}
+							{#if filterEndDate}
+								<li>End Date: {filterEndDate}</li>
+							{/if}
+						</ul>
+					</div>
+				{/if}
+
+				<div class="flex justify-end gap-3 mt-4">
+					<button
+						on:click={closeExportModal}
+						class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 disabled:opacity-50"
+						disabled={exporting}
+					>
+						Cancel
+					</button>
+					<button
+						on:click={handleExport}
+						class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
+						disabled={exporting}
+					>
+						{exporting ? 'Exporting...' : 'Export'}
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
