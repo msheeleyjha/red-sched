@@ -3,7 +3,7 @@
 ## Overview
 Refactoring backend from flat file structure to vertical slice architecture organized by feature/capability.
 
-**Current Status**: In Progress (4/9 stories complete, ~52% done)
+**Current Status**: In Progress (5/9 stories complete, ~56% done)
 **Last Updated**: 2026-04-27
 
 ---
@@ -249,11 +249,85 @@ Created complete vertical slice for Matches feature with 8 files:
 
 ---
 
+### ✅ Story 8.5: Refactor Assignments Feature Slice (COMPLETE)
+**Story Points**: 8  
+**Status**: ✅ 100% Complete
+
+**Deliverables**:
+
+Created complete vertical slice for Assignments feature with 8 files:
+
+1. **features/assignments/models.go** (63 lines)
+   - AssignmentRequest, AssignmentResponse, AssignmentHistory
+   - RoleSlot, ConflictMatch, ConflictCheckResponse
+   - MatchTimeWindow for conflict detection
+
+2. **features/assignments/repository.go** (285 lines)
+   - RepositoryInterface with 8 methods
+   - Match and referee validation queries
+   - Role slot CRUD operations
+   - FindConflictingAssignments using PostgreSQL OVERLAPS
+   - Assignment history logging
+
+3. **features/assignments/service.go** (123 lines)
+   - AssignReferee (assign, reassign, remove)
+   - CheckConflicts with time window detection
+   - ValidRoleTypes and RoleTypeDisplayNames maps
+   - Complete validation logic
+
+4. **features/assignments/service_interface.go** (8 lines)
+   - ServiceInterface for dependency injection
+
+5. **features/assignments/handler.go** (83 lines)
+   - AssignReferee endpoint
+   - CheckConflicts endpoint with query params
+
+6. **features/assignments/routes.go** (14 lines)
+   - Route registration with RBAC
+
+7. **features/assignments/service_test.go** (447 lines, 14 tests)
+   - Mock repository implementation
+   - Assignment operation tests
+   - Conflict detection tests
+   - Role type validation tests
+
+8. **features/assignments/handler_test.go** (396 lines, 13 tests)
+   - Mock service implementation
+   - HTTP request/response tests
+   - Query parameter validation tests
+
+**Additional Changes**:
+- Modified `backend/main.go` to initialize and use assignments feature
+
+**Test Coverage**: 24 tests, all passing ✅
+- Service layer: 14 tests
+- Handler layer: 13 tests (actually counts as 13 top-level, 27 with sub-tests)
+
+**Completion Documentation**: `STORY_8.5_COMPLETE.md` (550+ lines)
+
+**Key Achievements**:
+- Referee assignment operations (assign, reassign, remove)
+- Comprehensive validation (match, role, referee existence)
+- Duplicate role prevention on same match
+- Time-based conflict detection using PostgreSQL OVERLAPS
+- Assignment history audit trail
+- Acknowledgment clearing on assignment changes
+- 24 comprehensive tests covering all business logic
+
+---
+
 ## Stories Remaining
 
-### 📋 Story 8.5: Refactor Assignments Feature Slice
-**Story Points**: 8  
+### 📋 Story 8.6: Refactor Remaining Feature Slices
+**Story Points**: 13  
 **Status**: Not started
+
+**Includes**:
+- features/referees/ (from referees.go)
+- features/availability/ (from availability.go, day_unavailability.go)
+- features/eligibility/ (from eligibility.go)
+- features/acknowledgment/ (from acknowledgment.go)
+- features/profile/ (from profile.go)
 
 ### 📋 Story 8.4: Refactor Matches Feature Slice
 **Story Points**: 8  
@@ -296,15 +370,15 @@ Created complete vertical slice for Matches feature with 8 files:
 | 8.2 | Shared Infrastructure | 5 | ✅ Complete | 100% |
 | 8.3 | Users Feature Slice | 8 | ✅ Complete | 100% |
 | 8.4 | Matches Feature Slice | 8 | ✅ Complete | 100% |
-| 8.5 | Assignments Feature Slice | 8 | 📋 Pending | 0% |
+| 8.5 | Assignments Feature Slice | 8 | ✅ Complete | 100% |
 | 8.6 | Remaining Feature Slices | 13 | 📋 Pending | 0% |
 | 8.7 | Update Main & Router | 5 | 📋 Pending | 0% |
 | 8.8 | Update Documentation | 3 | 📋 Pending | 0% |
 | 8.9 | Clean Up Old Files | 2 | 📋 Pending | 0% |
-| **Total** | | **54** | | **~52%** |
+| **Total** | | **54** | | **~56%** |
 
-**Story Points Completed**: 23 / 54 (43%)  
-**Actual Completion**: ~52% (4 stories fully complete)
+**Story Points Completed**: 31 / 54 (57%)  
+**Actual Completion**: ~56% (5 stories fully complete)
 
 ---
 
@@ -376,6 +450,27 @@ Created complete vertical slice for Matches feature with 8 files:
     - Story 8.4: 100% COMPLETE ✅
     - Created STORY_8.4_COMPLETE.md (714 lines)
 
+11. **ead89b8** - Update Epic 8 progress: Story 8.4 complete (100%)
+
+12. **de36529** - Epic 8: Refactor assignments feature to vertical slice (Story 8.5)
+    - Created features/assignments/ directory structure
+    - Implemented Repository → Service → Handler layers
+    - Created 6 files: models.go, repository.go, service.go, service_interface.go, handler.go, routes.go
+    - Referee assignment operations (assign, reassign, remove)
+    - Conflict detection using PostgreSQL OVERLAPS
+    - Assignment history logging
+    - Integrated with main.go and RBAC
+    - Story 8.5: Feature structure complete
+
+13. **14c98d6** - Epic 8: Add comprehensive tests for assignments feature (Story 8.5 complete)
+    - Added 24 comprehensive tests (14 service, 13 handler, counting sub-tests: 27)
+    - Created service_test.go (447 lines) and handler_test.go (396 lines)
+    - Mock implementations for repository and service
+    - Assignment, conflict detection, validation tests
+    - All tests passing ✅
+    - Story 8.5: 100% COMPLETE ✅
+    - Created STORY_8.5_COMPLETE.md (550+ lines)
+
 ---
 
 ## Current Branch Status
@@ -430,13 +525,14 @@ Complete smaller tasks while keeping momentum:
 
 ## Files Created in Epic 8
 
-### Documentation (6 files)
+### Documentation (7 files)
 - `ARCHITECTURE.md` (480 lines)
 - `STORY_8.1_COMPLETE.md` (600 lines)
 - `STORY_8.2_COMPLETE.md` (501 lines)
 - `STORY_8.3_COMPLETE.md` (459 lines)
 - `STORY_8.4_COMPLETE.md` (714 lines)
-- `EPIC_8_PROGRESS.md` (this file, 500+ lines)
+- `STORY_8.5_COMPLETE.md` (550 lines)
+- `EPIC_8_PROGRESS.md` (this file, 550+ lines)
 
 ### Backend Code (9 files, 661 lines)
 - `backend/shared/config/config.go` (109 lines)
@@ -449,7 +545,7 @@ Complete smaller tasks while keeping momentum:
 - `backend/shared/middleware/logging.go` (43 lines)
 - `backend/shared/utils/ip.go` (32 lines)
 
-### Backend Tests (9 files, 2,850 lines)
+### Backend Tests (11 files, 3,693 lines)
 - `backend/shared/config/config_test.go` (231 lines, 7 tests)
 - `backend/shared/errors/errors_test.go` (218 lines, 9 tests)
 - `backend/shared/middleware/cors_test.go` (26 lines, 2 tests)
@@ -459,6 +555,8 @@ Complete smaller tasks while keeping momentum:
 - `backend/features/users/handler_test.go` (298 lines, 8 tests)
 - `backend/features/matches/service_test.go` (785 lines, 36 tests)
 - `backend/features/matches/handler_test.go` (595 lines, 18 tests)
+- `backend/features/assignments/service_test.go` (447 lines, 14 tests)
+- `backend/features/assignments/handler_test.go` (396 lines, 13 tests)
 
 ### Users Feature Slice (6 files, 661 lines)
 - `backend/features/users/models.go` (38 lines)
@@ -479,7 +577,16 @@ Complete smaller tasks while keeping momentum:
 - Modified: `backend/main.go` (+10, -5 lines)
 - Modified: `backend/.gitignore` (+1 line)
 
-**Total**: 39 files, ~7,703 lines (documentation + code + tests)
+### Assignments Feature Slice (6 files, 576 lines)
+- `backend/features/assignments/models.go` (63 lines)
+- `backend/features/assignments/repository.go` (285 lines)
+- `backend/features/assignments/service.go` (123 lines)
+- `backend/features/assignments/service_interface.go` (8 lines)
+- `backend/features/assignments/handler.go` (83 lines)
+- `backend/features/assignments/routes.go` (14 lines)
+- Modified: `backend/main.go` (+7 lines)
+
+**Total**: 47 files, ~9,587 lines (documentation + code + tests)
 
 ---
 
@@ -619,25 +726,26 @@ backend/
 
 ## What's Next?
 
-**Recommended**: Start Story 8.5 - Refactor Assignments Feature Slice
+**Recommended**: Start Story 8.6 - Remaining Feature Slices
 
 **Why**: 
-- Two feature slices complete (Users + Matches) ✅
-- Proven vertical slice pattern demonstrated twice
-- Assignments feature has moderate complexity
+- Three feature slices complete (Users + Matches + Assignments) ✅
+- Proven vertical slice pattern demonstrated three times
+- Story 8.6 includes 5 remaining features (referees, availability, eligibility, acknowledgment, profile)
 - Can follow the same pattern established
+- Largest story remaining (13 points)
 
-**Estimated Time**: 3-4 hours
+**Estimated Time**: 6-8 hours (multiple features)
 
 **Alternative**: Take a break and review progress
-- 4 stories complete (52% of Epic 8 done)
+- 5 stories complete (56% of Epic 8 done)
 - Strong foundation established
-- 107 tests passing
+- 131 tests passing
 - Good stopping point if needed
 
 ---
 
 **Last Updated**: 2026-04-27  
-**Session**: Epic 8 - Story 8.4 complete  
+**Session**: Epic 8 - Story 8.5 complete  
 **Branch**: epic-8-vertical-slices  
-**Status**: ✅ Story 8.4 COMPLETE! 4/9 stories done (52%) - 107 tests passing
+**Status**: ✅ Story 8.5 COMPLETE! 5/9 stories done (56%) - 131 tests passing
