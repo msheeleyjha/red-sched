@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	_ "github.com/lib/pq"
+	"github.com/msheeley/referee-scheduler/features/users"
 	"github.com/msheeley/referee-scheduler/shared/config"
 	"github.com/msheeley/referee-scheduler/shared/database"
 	"github.com/msheeley/referee-scheduler/shared/middleware"
@@ -29,6 +30,9 @@ var (
 	// Middleware instances
 	authMW *middleware.AuthMiddleware
 	rbacMW *middleware.RBACMiddleware
+
+	// Feature services (temporary, until auth is refactored)
+	usersService *users.Service
 )
 
 func main() {
@@ -87,6 +91,12 @@ func main() {
 	authMW = middleware.NewAuthMiddleware(sessionStore, db)
 	rbacMW = middleware.NewRBACMiddleware(sessionStore, db)
 
+	// Initialize feature slices
+	usersRepo := users.NewRepository(db)
+	usersService = users.NewService(usersRepo)
+	usersHandler := users.NewHandler(usersService)
+	log.Println("Users feature initialized")
+
 	// Setup router
 	r := mux.NewRouter()
 
@@ -95,11 +105,9 @@ func main() {
 	r.HandleFunc("/api/auth/google", googleAuthHandler).Methods("GET")
 	r.HandleFunc("/api/auth/google/callback", googleCallbackHandler).Methods("GET")
 	r.HandleFunc("/api/auth/logout", logoutHandler).Methods("POST")
-	r.HandleFunc("/api/auth/me", authMiddleware(meHandler)).Methods("GET")
 
-	// Profile routes (authenticated users)
-	r.HandleFunc("/api/profile", authMiddleware(getProfileHandler)).Methods("GET")
-	r.HandleFunc("/api/profile", authMiddleware(updateProfileHandler)).Methods("PUT")
+	// Feature routes
+	usersHandler.RegisterRoutes(r, authMiddleware)
 
 	// Referee management routes (assignors only)
 	r.HandleFunc("/api/referees", authMiddleware(assignorOnly(listRefereesHandler))).Methods("GET")
@@ -214,7 +222,7 @@ func googleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Find or create user
-	user, err := findOrCreateUser(userInfo.ID, userInfo.Email, userInfo.Name)
+	user, err := usersService.FindOrCreate(r.Context(), userInfo.ID, userInfo.Email, userInfo.Name)
 	if err != nil {
 		log.Printf("Failed to find or create user: %v", err)
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
