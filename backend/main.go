@@ -25,6 +25,7 @@ var (
 	db           *sql.DB
 	sessionStore *sessions.CookieStore
 	oauth2Config *oauth2.Config
+	auditLogger  *AuditLogger
 )
 
 func main() {
@@ -60,6 +61,11 @@ func main() {
 	if err := runMigrations(dbURL); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
+
+	// Initialize audit logger
+	auditLogger = NewAuditLogger(db)
+	defer auditLogger.Close()
+	log.Println("Audit logger initialized")
 
 	// Initialize session store
 	sessionSecret := os.Getenv("SESSION_SECRET")
@@ -140,6 +146,9 @@ func main() {
 	r.HandleFunc("/api/admin/users/{id}/roles", requirePermission("can_assign_roles", getUserRoles)).Methods("GET")
 	r.HandleFunc("/api/admin/roles", requirePermission("can_assign_roles", getAllRoles)).Methods("GET")
 	r.HandleFunc("/api/admin/permissions", requirePermission("can_assign_roles", getAllPermissions)).Methods("GET")
+
+	// Epic 2: Audit Logging routes (requires can_view_audit_logs permission)
+	r.HandleFunc("/api/admin/audit-logs", requirePermission("can_view_audit_logs", getAuditLogsHandler)).Methods("GET")
 
 	// Setup CORS
 	corsHandler := cors.New(cors.Options{

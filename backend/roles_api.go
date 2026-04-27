@@ -108,7 +108,12 @@ func assignRoleToUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Create audit log entry when Epic 2 is implemented
+	// Create audit log entry
+	auditLogger.LogWithContext(r, AuditActionCreate, "user_role", targetUserID, nil, map[string]interface{}{
+		"user_id":     targetUserID,
+		"role_id":     req.RoleID,
+		"assigned_by": currentUserID,
+	})
 
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{
@@ -178,7 +183,11 @@ func revokeRoleFromUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: Create audit log entry when Epic 2 is implemented
+	// Create audit log entry
+	auditLogger.LogWithContext(r, AuditActionDelete, "user_role", targetUserID, map[string]interface{}{
+		"user_id": targetUserID,
+		"role_id": roleID,
+	}, nil)
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{
