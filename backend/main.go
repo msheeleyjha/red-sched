@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	_ "github.com/lib/pq"
+	"github.com/msheeley/referee-scheduler/features/matches"
 	"github.com/msheeley/referee-scheduler/features/users"
 	"github.com/msheeley/referee-scheduler/shared/config"
 	"github.com/msheeley/referee-scheduler/shared/database"
@@ -97,6 +98,11 @@ func main() {
 	usersHandler := users.NewHandler(usersService)
 	log.Println("Users feature initialized")
 
+	matchesRepo := matches.NewRepository(db)
+	matchesService := matches.NewService(matchesRepo)
+	matchesHandler := matches.NewHandler(matchesService)
+	log.Println("Matches feature initialized")
+
 	// Setup router
 	r := mux.NewRouter()
 
@@ -108,16 +114,21 @@ func main() {
 
 	// Feature routes
 	usersHandler.RegisterRoutes(r, authMiddleware)
+	matchesHandler.RegisterRoutes(r, authMiddleware, requirePermission)
 
 	// Referee management routes (assignors only)
 	r.HandleFunc("/api/referees", authMiddleware(assignorOnly(listRefereesHandler))).Methods("GET")
 	r.HandleFunc("/api/referees/{id}", authMiddleware(assignorOnly(updateRefereeHandler))).Methods("PUT")
 
-	// Match management routes (assignors only)
-	r.HandleFunc("/api/matches/import/parse", authMiddleware(assignorOnly(parseCSVHandler))).Methods("POST")
-	r.HandleFunc("/api/matches/import/confirm", authMiddleware(assignorOnly(importMatchesHandler))).Methods("POST")
-	r.HandleFunc("/api/matches", authMiddleware(assignorOnly(listMatchesHandler))).Methods("GET")
-	r.HandleFunc("/api/matches/{id}", authMiddleware(assignorOnly(updateMatchHandler))).Methods("PUT")
+	// Match management routes - moved to matches feature slice
+	// Old routes commented out (now handled by matchesHandler):
+	// r.HandleFunc("/api/matches/import/parse", authMiddleware(assignorOnly(parseCSVHandler))).Methods("POST")
+	// r.HandleFunc("/api/matches/import/confirm", authMiddleware(assignorOnly(importMatchesHandler))).Methods("POST")
+	// r.HandleFunc("/api/matches", authMiddleware(assignorOnly(listMatchesHandler))).Methods("GET")
+	// r.HandleFunc("/api/matches/{id}", authMiddleware(assignorOnly(updateMatchHandler))).Methods("PUT")
+	// r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/add", authMiddleware(assignorOnly(addRoleSlotHandler))).Methods("POST")
+
+	// Eligibility check route (still in old code)
 	r.HandleFunc("/api/matches/{id}/eligible-referees", authMiddleware(assignorOnly(getEligibleRefereesHandler))).Methods("GET")
 
 	// Referee availability routes
@@ -131,7 +142,7 @@ func main() {
 
 	// Assignment routes (assignors only)
 	r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/assign", authMiddleware(assignorOnly(assignRefereeHandler))).Methods("POST")
-	r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/add", authMiddleware(assignorOnly(addRoleSlotHandler))).Methods("POST")
+	// r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/add", authMiddleware(assignorOnly(addRoleSlotHandler))).Methods("POST") // Moved to matches feature
 	r.HandleFunc("/api/matches/{match_id}/conflicts", authMiddleware(assignorOnly(getConflictingAssignmentsHandler))).Methods("GET")
 
 	// Epic 1: RBAC Admin routes (requires can_assign_roles permission)

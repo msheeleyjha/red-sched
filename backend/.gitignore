@@ -1,5 +1,6 @@
 # Binaries
 main
+referee-scheduler
 *.exe
 *.exe~
 *.dll
