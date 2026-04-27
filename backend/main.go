@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	_ "github.com/lib/pq"
+	"github.com/msheeley/referee-scheduler/features/acknowledgment"
 	"github.com/msheeley/referee-scheduler/features/assignments"
 	"github.com/msheeley/referee-scheduler/features/matches"
 	"github.com/msheeley/referee-scheduler/features/users"
@@ -109,6 +110,11 @@ func main() {
 	assignmentsHandler := assignments.NewHandler(assignmentsService)
 	log.Println("Assignments feature initialized")
 
+	acknowledgmentRepo := acknowledgment.NewRepository(db)
+	acknowledgmentService := acknowledgment.NewService(acknowledgmentRepo)
+	acknowledgmentHandler := acknowledgment.NewHandler(acknowledgmentService)
+	log.Println("Acknowledgment feature initialized")
+
 	// Setup router
 	r := mux.NewRouter()
 
@@ -122,6 +128,7 @@ func main() {
 	usersHandler.RegisterRoutes(r, authMiddleware)
 	matchesHandler.RegisterRoutes(r, authMiddleware, requirePermission)
 	assignmentsHandler.RegisterRoutes(r, authMiddleware, requirePermission)
+	acknowledgmentHandler.RegisterRoutes(r, authMiddleware)
 
 	// Referee management routes (assignors only)
 	r.HandleFunc("/api/referees", authMiddleware(assignorOnly(listRefereesHandler))).Methods("GET")
