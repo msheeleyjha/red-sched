@@ -13,6 +13,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/msheeley/referee-scheduler/features/acknowledgment"
 	"github.com/msheeley/referee-scheduler/features/assignments"
+	"github.com/msheeley/referee-scheduler/features/availability"
 	"github.com/msheeley/referee-scheduler/features/matches"
 	"github.com/msheeley/referee-scheduler/features/referees"
 	"github.com/msheeley/referee-scheduler/features/users"
@@ -121,6 +122,11 @@ func main() {
 	refereesHandler := referees.NewHandler(refereesService)
 	log.Println("Referees feature initialized")
 
+	availabilityRepo := availability.NewRepository(db)
+	availabilityService := availability.NewService(availabilityRepo)
+	availabilityHandler := availability.NewHandler(availabilityService)
+	log.Println("Availability feature initialized")
+
 	// Setup router
 	r := mux.NewRouter()
 
@@ -136,6 +142,7 @@ func main() {
 	assignmentsHandler.RegisterRoutes(r, authMiddleware, requirePermission)
 	acknowledgmentHandler.RegisterRoutes(r, authMiddleware)
 	refereesHandler.RegisterRoutes(r, authMiddleware, requirePermission)
+	availabilityHandler.RegisterRoutes(r, authMiddleware)
 
 	// Referee management routes - moved to referees feature slice
 	// Old routes commented out (now handled by refereesHandler):
@@ -153,14 +160,16 @@ func main() {
 	// Eligibility check route (still in old code)
 	r.HandleFunc("/api/matches/{id}/eligible-referees", authMiddleware(assignorOnly(getEligibleRefereesHandler))).Methods("GET")
 
-	// Referee availability routes
+	// Referee availability routes - moved to availability feature slice
+	// Old routes commented out (now handled by availabilityHandler):
 	r.HandleFunc("/api/referee/matches", authMiddleware(getEligibleMatchesForRefereeHandler)).Methods("GET")
-	r.HandleFunc("/api/referee/matches/{id}/availability", authMiddleware(toggleAvailabilityHandler)).Methods("POST")
-	r.HandleFunc("/api/referee/matches/{match_id}/acknowledge", authMiddleware(acknowledgeAssignmentHandler)).Methods("POST")
+	// r.HandleFunc("/api/referee/matches/{id}/availability", authMiddleware(toggleAvailabilityHandler)).Methods("POST")
+	// r.HandleFunc("/api/referee/day-unavailability", authMiddleware(getDayUnavailabilityHandler)).Methods("GET")
+	// r.HandleFunc("/api/referee/day-unavailability/{date}", authMiddleware(toggleDayUnavailabilityHandler)).Methods("POST")
 
-	// Day unavailability routes
-	r.HandleFunc("/api/referee/day-unavailability", authMiddleware(getDayUnavailabilityHandler)).Methods("GET")
-	r.HandleFunc("/api/referee/day-unavailability/{date}", authMiddleware(toggleDayUnavailabilityHandler)).Methods("POST")
+	// Referee acknowledgment routes - moved to acknowledgment feature slice
+	// Old routes commented out (now handled by acknowledgmentHandler):
+	// r.HandleFunc("/api/referee/matches/{match_id}/acknowledge", authMiddleware(acknowledgeAssignmentHandler)).Methods("POST")
 
 	// Assignment routes - moved to assignments feature slice
 	// Old routes commented out (now handled by assignmentsHandler):

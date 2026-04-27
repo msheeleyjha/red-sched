@@ -3,7 +3,7 @@
 ## Overview
 Refactoring backend from flat file structure to vertical slice architecture organized by feature/capability.
 
-**Current Status**: In Progress (5.4/9 stories complete, ~60% done)
+**Current Status**: In Progress (5.6/9 stories complete, ~62% done)
 **Last Updated**: 2026-04-27
 
 ---
@@ -320,18 +320,20 @@ Created complete vertical slice for Assignments feature with 8 files:
 
 ### 🔄 Story 8.6: Refactor Remaining Feature Slices
 **Story Points**: 13  
-**Status**: In Progress (2/5 features complete, ~40%)
+**Status**: In Progress (3/5 features complete, ~60%)
 
 **Features**:
 - ✅ features/acknowledgment/ - COMPLETE (8 files, 653 lines, 13 tests passing)
 - ✅ features/referees/ - COMPLETE (8 files, 1,501 lines, 31 tests passing)
-- ⏳ features/availability/ (from availability.go, day_unavailability.go)
+- ✅ features/availability/ - COMPLETE (8 files, 1,186 lines, 22 tests passing)
 - ⏳ features/eligibility/ (from eligibility.go)
 - ⏳ features/profile/ (from profile.go, may merge with users)
 
 **Progress**: 
 - Acknowledgment feature: Full test coverage (see STORY_8.6_ACKNOWLEDGMENT_COMPLETE.md)
 - Referees feature: Full test coverage (see STORY_8.6_REFEREES_COMPLETE.md)
+- Availability feature: Full test coverage (see STORY_8.6_AVAILABILITY_COMPLETE.md)
+  - Note: getEligibleMatchesForReferee endpoint deferred until eligibility is refactored
 
 ### 📋 Story 8.7: Update Main Entry Point & Router
 **Story Points**: 5  
@@ -356,14 +358,14 @@ Created complete vertical slice for Assignments feature with 8 files:
 | 8.3 | Users Feature Slice | 8 | ✅ Complete | 100% |
 | 8.4 | Matches Feature Slice | 8 | ✅ Complete | 100% |
 | 8.5 | Assignments Feature Slice | 8 | ✅ Complete | 100% |
-| 8.6 | Remaining Feature Slices | 13 | 🔄 In Progress | 40% |
+| 8.6 | Remaining Feature Slices | 13 | 🔄 In Progress | 60% |
 | 8.7 | Update Main & Router | 5 | 📋 Pending | 0% |
 | 8.8 | Update Documentation | 3 | 📋 Pending | 0% |
 | 8.9 | Clean Up Old Files | 2 | 📋 Pending | 0% |
-| **Total** | | **54** | | **~60%** |
+| **Total** | | **54** | | **~62%** |
 
-**Story Points Completed**: 36.2 / 54 (67%)  
-**Actual Completion**: ~60% (5 complete + 1 at 40%)
+**Story Points Completed**: 38.8 / 54 (72%)  
+**Actual Completion**: ~62% (5 complete + 1 at 60%)
 
 ---
 
@@ -468,7 +470,7 @@ Created complete vertical slice for Assignments feature with 8 files:
     - Created STORY_8.6_ACKNOWLEDGMENT_COMPLETE.md (328 lines)
     - Integrated with main.go
 
-15. **(pending)** - Epic 8: Refactor referees feature to vertical slice (Story 8.6 - 2/5)
+15. **fe5e9da** - Epic 8: Refactor referees feature to vertical slice (Story 8.6 - 2/5)
     - Created features/referees/ directory structure
     - Implemented Repository → Service → Handler layers
     - Created 8 files: models.go, repository.go, service.go, service_interface.go, handler.go, routes.go, service_test.go, handler_test.go
@@ -481,6 +483,21 @@ Created complete vertical slice for Assignments feature with 8 files:
     - Story 8.6: 40% COMPLETE (2/5 features)
     - Created STORY_8.6_REFEREES_COMPLETE.md (402 lines)
     - Integrated with main.go
+
+16. **(pending)** - Epic 8: Refactor availability feature to vertical slice (Story 8.6 - 3/5)
+    - Created features/availability/ directory structure
+    - Implemented Repository → Service → Handler layers
+    - Created 8 files: models.go, repository.go, service.go, service_interface.go, handler.go, routes.go, service_test.go, handler_test.go
+    - Match availability toggle (tri-state: available/unavailable/no preference)
+    - Day unavailability management with optional reason
+    - Auto-clear match availability when day marked unavailable
+    - Date validation (YYYY-MM-DD format)
+    - Added 22 comprehensive tests (11 service + 11 handler)
+    - All tests passing ✅
+    - Story 8.6: 60% COMPLETE (3/5 features)
+    - Created STORY_8.6_AVAILABILITY_COMPLETE.md (452 lines)
+    - Integrated with main.go
+    - Note: getEligibleMatchesForReferee endpoint deferred until eligibility is refactored
 
 ---
 
@@ -536,7 +553,7 @@ Complete smaller tasks while keeping momentum:
 
 ## Files Created in Epic 8
 
-### Documentation (9 files)
+### Documentation (10 files)
 - `ARCHITECTURE.md` (480 lines)
 - `STORY_8.1_COMPLETE.md` (600 lines)
 - `STORY_8.2_COMPLETE.md` (501 lines)
@@ -545,7 +562,8 @@ Complete smaller tasks while keeping momentum:
 - `STORY_8.5_COMPLETE.md` (550 lines)
 - `STORY_8.6_ACKNOWLEDGMENT_COMPLETE.md` (328 lines)
 - `STORY_8.6_REFEREES_COMPLETE.md` (402 lines)
-- `EPIC_8_PROGRESS.md` (this file, 800+ lines)
+- `STORY_8.6_AVAILABILITY_COMPLETE.md` (452 lines)
+- `EPIC_8_PROGRESS.md` (this file, 900+ lines)
 
 ### Backend Code (9 files, 661 lines)
 - `backend/shared/config/config.go` (109 lines)
@@ -558,7 +576,7 @@ Complete smaller tasks while keeping momentum:
 - `backend/shared/middleware/logging.go` (43 lines)
 - `backend/shared/utils/ip.go` (32 lines)
 
-### Backend Tests (15 files, 5,153 lines)
+### Backend Tests (17 files, 5,906 lines)
 - `backend/shared/config/config_test.go` (231 lines, 7 tests)
 - `backend/shared/errors/errors_test.go` (218 lines, 9 tests)
 - `backend/shared/middleware/cors_test.go` (26 lines, 2 tests)
@@ -574,6 +592,8 @@ Complete smaller tasks while keeping momentum:
 - `backend/features/acknowledgment/handler_test.go` (255 lines, 8 tests)
 - `backend/features/referees/service_test.go` (631 lines, 18 tests)
 - `backend/features/referees/handler_test.go` (365 lines, 13 tests)
+- `backend/features/availability/service_test.go` (433 lines, 11 tests)
+- `backend/features/availability/handler_test.go` (320 lines, 11 tests)
 
 ### Users Feature Slice (6 files, 661 lines)
 - `backend/features/users/models.go` (38 lines)
@@ -625,7 +645,18 @@ Complete smaller tasks while keeping momentum:
 - `backend/features/referees/handler_test.go` (365 lines, 13 tests)
 - Modified: `backend/main.go` (+10, -2 lines)
 
-**Total**: 64 files, ~12,069 lines (documentation + code + tests)
+### Availability Feature Slice (8 files, 1,186 lines)
+- `backend/features/availability/models.go` (42 lines)
+- `backend/features/availability/repository.go` (167 lines)
+- `backend/features/availability/service.go` (99 lines)
+- `backend/features/availability/service_interface.go` (12 lines)
+- `backend/features/availability/handler.go` (107 lines)
+- `backend/features/availability/routes.go` (16 lines)
+- `backend/features/availability/service_test.go` (433 lines, 11 tests)
+- `backend/features/availability/handler_test.go` (320 lines, 11 tests)
+- Modified: `backend/main.go` (+9, -3 lines)
+
+**Total**: 72 files, ~13,255 lines (documentation + code + tests)
 
 ---
 
@@ -785,6 +816,6 @@ backend/
 ---
 
 **Last Updated**: 2026-04-27  
-**Session**: Epic 8 - Story 8.6 in progress (acknowledgment + referees complete)  
+**Session**: Epic 8 - Story 8.6 in progress (acknowledgment + referees + availability complete)  
 **Branch**: epic-8-vertical-slices  
-**Status**: ✅ Referees feature COMPLETE! Story 8.6: 2/5 features done (40%) - 175 tests passing
+**Status**: ✅ Availability feature COMPLETE! Story 8.6: 3/5 features done (60%) - 197 tests passing
