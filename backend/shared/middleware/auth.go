@@ -108,3 +108,8 @@ func GetUserFromContext(ctx context.Context) (*User, bool) {
 	user, ok := ctx.Value(userContextKey).(*User)
 	return user, ok
 }
+
+// SetUserInContext adds a user to the context (for testing)
+func SetUserInContext(ctx context.Context, user *User) context.Context {
+	return context.WithValue(ctx, userContextKey, user)
+}

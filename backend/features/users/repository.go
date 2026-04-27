@@ -6,6 +6,14 @@ import (
 	"fmt"
 )
 
+// RepositoryInterface defines the interface for user data access
+type RepositoryInterface interface {
+	FindByGoogleID(ctx context.Context, googleID string) (*User, error)
+	FindByID(ctx context.Context, id int64) (*User, error)
+	Create(ctx context.Context, googleID, email, name string) (*User, error)
+	UpdateProfile(ctx context.Context, userID int64, data ProfileUpdateData) (*User, error)
+}
+
 // Repository handles user data access
 type Repository struct {
 	db *sql.DB
