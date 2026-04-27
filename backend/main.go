@@ -14,6 +14,7 @@ import (
 	"github.com/msheeley/referee-scheduler/features/acknowledgment"
 	"github.com/msheeley/referee-scheduler/features/assignments"
 	"github.com/msheeley/referee-scheduler/features/matches"
+	"github.com/msheeley/referee-scheduler/features/referees"
 	"github.com/msheeley/referee-scheduler/features/users"
 	"github.com/msheeley/referee-scheduler/shared/config"
 	"github.com/msheeley/referee-scheduler/shared/database"
@@ -115,6 +116,11 @@ func main() {
 	acknowledgmentHandler := acknowledgment.NewHandler(acknowledgmentService)
 	log.Println("Acknowledgment feature initialized")
 
+	refereesRepo := referees.NewRepository(db)
+	refereesService := referees.NewService(refereesRepo)
+	refereesHandler := referees.NewHandler(refereesService)
+	log.Println("Referees feature initialized")
+
 	// Setup router
 	r := mux.NewRouter()
 
@@ -129,10 +135,12 @@ func main() {
 	matchesHandler.RegisterRoutes(r, authMiddleware, requirePermission)
 	assignmentsHandler.RegisterRoutes(r, authMiddleware, requirePermission)
 	acknowledgmentHandler.RegisterRoutes(r, authMiddleware)
+	refereesHandler.RegisterRoutes(r, authMiddleware, requirePermission)
 
-	// Referee management routes (assignors only)
-	r.HandleFunc("/api/referees", authMiddleware(assignorOnly(listRefereesHandler))).Methods("GET")
-	r.HandleFunc("/api/referees/{id}", authMiddleware(assignorOnly(updateRefereeHandler))).Methods("PUT")
+	// Referee management routes - moved to referees feature slice
+	// Old routes commented out (now handled by refereesHandler):
+	// r.HandleFunc("/api/referees", authMiddleware(assignorOnly(listRefereesHandler))).Methods("GET")
+	// r.HandleFunc("/api/referees/{id}", authMiddleware(assignorOnly(updateRefereeHandler))).Methods("PUT")
 
 	// Match management routes - moved to matches feature slice
 	// Old routes commented out (now handled by matchesHandler):

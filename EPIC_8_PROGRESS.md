@@ -3,7 +3,7 @@
 ## Overview
 Refactoring backend from flat file structure to vertical slice architecture organized by feature/capability.
 
-**Current Status**: In Progress (5.2/9 stories complete, ~58% done)
+**Current Status**: In Progress (5.4/9 stories complete, ~60% done)
 **Last Updated**: 2026-04-27
 
 ---
@@ -320,16 +320,18 @@ Created complete vertical slice for Assignments feature with 8 files:
 
 ### 🔄 Story 8.6: Refactor Remaining Feature Slices
 **Story Points**: 13  
-**Status**: In Progress (1/5 features complete, ~20%)
+**Status**: In Progress (2/5 features complete, ~40%)
 
 **Features**:
 - ✅ features/acknowledgment/ - COMPLETE (8 files, 653 lines, 13 tests passing)
-- ⏳ features/referees/ (from referees.go)
+- ✅ features/referees/ - COMPLETE (8 files, 1,501 lines, 31 tests passing)
 - ⏳ features/availability/ (from availability.go, day_unavailability.go)
 - ⏳ features/eligibility/ (from eligibility.go)
 - ⏳ features/profile/ (from profile.go, may merge with users)
 
-**Progress**: Acknowledgment feature implemented with full test coverage (see STORY_8.6_ACKNOWLEDGMENT_COMPLETE.md)
+**Progress**: 
+- Acknowledgment feature: Full test coverage (see STORY_8.6_ACKNOWLEDGMENT_COMPLETE.md)
+- Referees feature: Full test coverage (see STORY_8.6_REFEREES_COMPLETE.md)
 
 ### 📋 Story 8.7: Update Main Entry Point & Router
 **Story Points**: 5  
@@ -354,14 +356,14 @@ Created complete vertical slice for Assignments feature with 8 files:
 | 8.3 | Users Feature Slice | 8 | ✅ Complete | 100% |
 | 8.4 | Matches Feature Slice | 8 | ✅ Complete | 100% |
 | 8.5 | Assignments Feature Slice | 8 | ✅ Complete | 100% |
-| 8.6 | Remaining Feature Slices | 13 | 🔄 In Progress | 20% |
+| 8.6 | Remaining Feature Slices | 13 | 🔄 In Progress | 40% |
 | 8.7 | Update Main & Router | 5 | 📋 Pending | 0% |
 | 8.8 | Update Documentation | 3 | 📋 Pending | 0% |
 | 8.9 | Clean Up Old Files | 2 | 📋 Pending | 0% |
-| **Total** | | **54** | | **~58%** |
+| **Total** | | **54** | | **~60%** |
 
-**Story Points Completed**: 33.6 / 54 (62%)  
-**Actual Completion**: ~58% (5 complete + 1 at 20%)
+**Story Points Completed**: 36.2 / 54 (67%)  
+**Actual Completion**: ~60% (5 complete + 1 at 40%)
 
 ---
 
@@ -454,7 +456,7 @@ Created complete vertical slice for Assignments feature with 8 files:
     - Story 8.5: 100% COMPLETE ✅
     - Created STORY_8.5_COMPLETE.md (550+ lines)
 
-14. **(pending)** - Epic 8: Refactor acknowledgment feature to vertical slice (Story 8.6 - 1/5)
+14. **17f7aad** - Epic 8: Refactor acknowledgment feature to vertical slice (Story 8.6 - 1/5)
     - Created features/acknowledgment/ directory structure
     - Implemented Repository → Service → Handler layers
     - Created 8 files: models.go, repository.go, service.go, service_interface.go, handler.go, routes.go, service_test.go, handler_test.go
@@ -464,6 +466,20 @@ Created complete vertical slice for Assignments feature with 8 files:
     - All tests passing ✅
     - Story 8.6: 20% COMPLETE (1/5 features)
     - Created STORY_8.6_ACKNOWLEDGMENT_COMPLETE.md (328 lines)
+    - Integrated with main.go
+
+15. **(pending)** - Epic 8: Refactor referees feature to vertical slice (Story 8.6 - 2/5)
+    - Created features/referees/ directory structure
+    - Implemented Repository → Service → Handler layers
+    - Created 8 files: models.go, repository.go, service.go, service_interface.go, handler.go, routes.go, service_test.go, handler_test.go
+    - Referee management with complex business rules
+    - Auto-promotion logic (pending_referee → referee, referee → assignor)
+    - Protection rules (cannot modify other assignor, cannot deactivate self, cannot deactivate with upcoming assignments)
+    - Certification status calculation (none, valid, expiring_soon, expired)
+    - Added 31 comprehensive tests (18 service + 13 handler)
+    - All tests passing ✅
+    - Story 8.6: 40% COMPLETE (2/5 features)
+    - Created STORY_8.6_REFEREES_COMPLETE.md (402 lines)
     - Integrated with main.go
 
 ---
@@ -520,7 +536,7 @@ Complete smaller tasks while keeping momentum:
 
 ## Files Created in Epic 8
 
-### Documentation (8 files)
+### Documentation (9 files)
 - `ARCHITECTURE.md` (480 lines)
 - `STORY_8.1_COMPLETE.md` (600 lines)
 - `STORY_8.2_COMPLETE.md` (501 lines)
@@ -528,7 +544,8 @@ Complete smaller tasks while keeping momentum:
 - `STORY_8.4_COMPLETE.md` (714 lines)
 - `STORY_8.5_COMPLETE.md` (550 lines)
 - `STORY_8.6_ACKNOWLEDGMENT_COMPLETE.md` (328 lines)
-- `EPIC_8_PROGRESS.md` (this file, 750+ lines)
+- `STORY_8.6_REFEREES_COMPLETE.md` (402 lines)
+- `EPIC_8_PROGRESS.md` (this file, 800+ lines)
 
 ### Backend Code (9 files, 661 lines)
 - `backend/shared/config/config.go` (109 lines)
@@ -541,7 +558,7 @@ Complete smaller tasks while keeping momentum:
 - `backend/shared/middleware/logging.go` (43 lines)
 - `backend/shared/utils/ip.go` (32 lines)
 
-### Backend Tests (13 files, 4,157 lines)
+### Backend Tests (15 files, 5,153 lines)
 - `backend/shared/config/config_test.go` (231 lines, 7 tests)
 - `backend/shared/errors/errors_test.go` (218 lines, 9 tests)
 - `backend/shared/middleware/cors_test.go` (26 lines, 2 tests)
@@ -555,6 +572,8 @@ Complete smaller tasks while keeping momentum:
 - `backend/features/assignments/handler_test.go` (396 lines, 13 tests)
 - `backend/features/acknowledgment/service_test.go` (209 lines, 5 tests)
 - `backend/features/acknowledgment/handler_test.go` (255 lines, 8 tests)
+- `backend/features/referees/service_test.go` (631 lines, 18 tests)
+- `backend/features/referees/handler_test.go` (365 lines, 13 tests)
 
 ### Users Feature Slice (6 files, 661 lines)
 - `backend/features/users/models.go` (38 lines)
@@ -595,7 +614,18 @@ Complete smaller tasks while keeping momentum:
 - `backend/features/acknowledgment/handler_test.go` (255 lines, 8 tests)
 - Modified: `backend/main.go` (+7 lines)
 
-**Total**: 56 files, ~10,568 lines (documentation + code + tests)
+### Referees Feature Slice (8 files, 1,501 lines)
+- `backend/features/referees/models.go` (56 lines)
+- `backend/features/referees/repository.go` (213 lines)
+- `backend/features/referees/service.go` (153 lines)
+- `backend/features/referees/service_interface.go` (10 lines)
+- `backend/features/referees/handler.go` (67 lines)
+- `backend/features/referees/routes.go` (16 lines)
+- `backend/features/referees/service_test.go` (631 lines, 18 tests)
+- `backend/features/referees/handler_test.go` (365 lines, 13 tests)
+- Modified: `backend/main.go` (+10, -2 lines)
+
+**Total**: 64 files, ~12,069 lines (documentation + code + tests)
 
 ---
 
@@ -755,6 +785,6 @@ backend/
 ---
 
 **Last Updated**: 2026-04-27  
-**Session**: Epic 8 - Story 8.6 in progress (acknowledgment complete)  
+**Session**: Epic 8 - Story 8.6 in progress (acknowledgment + referees complete)  
 **Branch**: epic-8-vertical-slices  
-**Status**: ✅ Acknowledgment feature COMPLETE! Story 8.6: 1/5 features done (20%) - 144 tests passing
+**Status**: ✅ Referees feature COMPLETE! Story 8.6: 2/5 features done (40%) - 175 tests passing
