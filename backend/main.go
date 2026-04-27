@@ -14,6 +14,7 @@ import (
 	"github.com/msheeley/referee-scheduler/features/acknowledgment"
 	"github.com/msheeley/referee-scheduler/features/assignments"
 	"github.com/msheeley/referee-scheduler/features/availability"
+	"github.com/msheeley/referee-scheduler/features/eligibility"
 	"github.com/msheeley/referee-scheduler/features/matches"
 	"github.com/msheeley/referee-scheduler/features/referees"
 	"github.com/msheeley/referee-scheduler/features/users"
@@ -127,6 +128,11 @@ func main() {
 	availabilityHandler := availability.NewHandler(availabilityService)
 	log.Println("Availability feature initialized")
 
+	eligibilityRepo := eligibility.NewRepository(db)
+	eligibilityService := eligibility.NewService(eligibilityRepo)
+	eligibilityHandler := eligibility.NewHandler(eligibilityService)
+	log.Println("Eligibility feature initialized")
+
 	// Setup router
 	r := mux.NewRouter()
 
@@ -143,6 +149,7 @@ func main() {
 	acknowledgmentHandler.RegisterRoutes(r, authMiddleware)
 	refereesHandler.RegisterRoutes(r, authMiddleware, requirePermission)
 	availabilityHandler.RegisterRoutes(r, authMiddleware)
+	eligibilityHandler.RegisterRoutes(r, authMiddleware, requirePermission)
 
 	// Referee management routes - moved to referees feature slice
 	// Old routes commented out (now handled by refereesHandler):
@@ -157,8 +164,9 @@ func main() {
 	// r.HandleFunc("/api/matches/{id}", authMiddleware(assignorOnly(updateMatchHandler))).Methods("PUT")
 	// r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/add", authMiddleware(assignorOnly(addRoleSlotHandler))).Methods("POST")
 
-	// Eligibility check route (still in old code)
-	r.HandleFunc("/api/matches/{id}/eligible-referees", authMiddleware(assignorOnly(getEligibleRefereesHandler))).Methods("GET")
+	// Eligibility check route - moved to eligibility feature slice
+	// Old route commented out (now handled by eligibilityHandler):
+	// r.HandleFunc("/api/matches/{id}/eligible-referees", authMiddleware(assignorOnly(getEligibleRefereesHandler))).Methods("GET")
 
 	// Referee availability routes - moved to availability feature slice
 	// Old routes commented out (now handled by availabilityHandler):

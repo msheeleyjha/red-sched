@@ -3,7 +3,7 @@
 ## Overview
 Refactoring backend from flat file structure to vertical slice architecture organized by feature/capability.
 
-**Current Status**: In Progress (5.6/9 stories complete, ~62% done)
+**Current Status**: In Progress (5.8/9 stories complete, ~64% done)
 **Last Updated**: 2026-04-27
 
 ---
@@ -320,20 +320,21 @@ Created complete vertical slice for Assignments feature with 8 files:
 
 ### 🔄 Story 8.6: Refactor Remaining Feature Slices
 **Story Points**: 13  
-**Status**: In Progress (3/5 features complete, ~60%)
+**Status**: In Progress (4/5 features complete, ~80%)
 
 **Features**:
 - ✅ features/acknowledgment/ - COMPLETE (8 files, 653 lines, 13 tests passing)
 - ✅ features/referees/ - COMPLETE (8 files, 1,501 lines, 31 tests passing)
 - ✅ features/availability/ - COMPLETE (8 files, 1,186 lines, 22 tests passing)
-- ⏳ features/eligibility/ (from eligibility.go)
+- ✅ features/eligibility/ - COMPLETE (8 files, 1,110 lines, 18 tests passing)
 - ⏳ features/profile/ (from profile.go, may merge with users)
 
 **Progress**: 
 - Acknowledgment feature: Full test coverage (see STORY_8.6_ACKNOWLEDGMENT_COMPLETE.md)
 - Referees feature: Full test coverage (see STORY_8.6_REFEREES_COMPLETE.md)
 - Availability feature: Full test coverage (see STORY_8.6_AVAILABILITY_COMPLETE.md)
-  - Note: getEligibleMatchesForReferee endpoint deferred until eligibility is refactored
+- Eligibility feature: Full test coverage (see STORY_8.6_ELIGIBILITY_COMPLETE.md)
+  - Enables completion of availability's getEligibleMatchesForReferee endpoint
 
 ### 📋 Story 8.7: Update Main Entry Point & Router
 **Story Points**: 5  
@@ -358,14 +359,14 @@ Created complete vertical slice for Assignments feature with 8 files:
 | 8.3 | Users Feature Slice | 8 | ✅ Complete | 100% |
 | 8.4 | Matches Feature Slice | 8 | ✅ Complete | 100% |
 | 8.5 | Assignments Feature Slice | 8 | ✅ Complete | 100% |
-| 8.6 | Remaining Feature Slices | 13 | 🔄 In Progress | 60% |
+| 8.6 | Remaining Feature Slices | 13 | 🔄 In Progress | 80% |
 | 8.7 | Update Main & Router | 5 | 📋 Pending | 0% |
 | 8.8 | Update Documentation | 3 | 📋 Pending | 0% |
 | 8.9 | Clean Up Old Files | 2 | 📋 Pending | 0% |
-| **Total** | | **54** | | **~62%** |
+| **Total** | | **54** | | **~64%** |
 
-**Story Points Completed**: 38.8 / 54 (72%)  
-**Actual Completion**: ~62% (5 complete + 1 at 60%)
+**Story Points Completed**: 41.4 / 54 (77%)  
+**Actual Completion**: ~64% (5 complete + 1 at 80%)
 
 ---
 
@@ -484,7 +485,7 @@ Created complete vertical slice for Assignments feature with 8 files:
     - Created STORY_8.6_REFEREES_COMPLETE.md (402 lines)
     - Integrated with main.go
 
-16. **(pending)** - Epic 8: Refactor availability feature to vertical slice (Story 8.6 - 3/5)
+16. **2ae2c5b** - Epic 8: Refactor availability feature to vertical slice (Story 8.6 - 3/5)
     - Created features/availability/ directory structure
     - Implemented Repository → Service → Handler layers
     - Created 8 files: models.go, repository.go, service.go, service_interface.go, handler.go, routes.go, service_test.go, handler_test.go
@@ -498,6 +499,21 @@ Created complete vertical slice for Assignments feature with 8 files:
     - Created STORY_8.6_AVAILABILITY_COMPLETE.md (452 lines)
     - Integrated with main.go
     - Note: getEligibleMatchesForReferee endpoint deferred until eligibility is refactored
+
+17. **(pending)** - Epic 8: Refactor eligibility feature to vertical slice (Story 8.6 - 4/5)
+    - Created features/eligibility/ directory structure
+    - Implemented Repository → Service → Handler layers
+    - Created 8 files: models.go, repository.go, service.go, service_interface.go, handler.go, routes.go, service_test.go, handler_test.go
+    - Referee eligibility checking based on age, certification, and match type
+    - Three eligibility rules: U10 and younger (age-based), U12+ center (certification required), U12+ assistant (no restrictions)
+    - Age calculation with birthday edge cases
+    - Exported CheckEligibility and CalculateAgeAtDate for reuse
+    - Added 18 comprehensive tests (9 service + 9 handler)
+    - All tests passing ✅
+    - Story 8.6: 80% COMPLETE (4/5 features)
+    - Created STORY_8.6_ELIGIBILITY_COMPLETE.md (475 lines)
+    - Integrated with main.go
+    - Enables completion of availability's getEligibleMatchesForReferee endpoint
 
 ---
 
@@ -553,7 +569,7 @@ Complete smaller tasks while keeping momentum:
 
 ## Files Created in Epic 8
 
-### Documentation (10 files)
+### Documentation (11 files)
 - `ARCHITECTURE.md` (480 lines)
 - `STORY_8.1_COMPLETE.md` (600 lines)
 - `STORY_8.2_COMPLETE.md` (501 lines)
@@ -563,7 +579,8 @@ Complete smaller tasks while keeping momentum:
 - `STORY_8.6_ACKNOWLEDGMENT_COMPLETE.md` (328 lines)
 - `STORY_8.6_REFEREES_COMPLETE.md` (402 lines)
 - `STORY_8.6_AVAILABILITY_COMPLETE.md` (452 lines)
-- `EPIC_8_PROGRESS.md` (this file, 900+ lines)
+- `STORY_8.6_ELIGIBILITY_COMPLETE.md` (475 lines)
+- `EPIC_8_PROGRESS.md` (this file, 1000+ lines)
 
 ### Backend Code (9 files, 661 lines)
 - `backend/shared/config/config.go` (109 lines)
@@ -576,7 +593,7 @@ Complete smaller tasks while keeping momentum:
 - `backend/shared/middleware/logging.go` (43 lines)
 - `backend/shared/utils/ip.go` (32 lines)
 
-### Backend Tests (17 files, 5,906 lines)
+### Backend Tests (19 files, 6,585 lines)
 - `backend/shared/config/config_test.go` (231 lines, 7 tests)
 - `backend/shared/errors/errors_test.go` (218 lines, 9 tests)
 - `backend/shared/middleware/cors_test.go` (26 lines, 2 tests)
@@ -594,6 +611,8 @@ Complete smaller tasks while keeping momentum:
 - `backend/features/referees/handler_test.go` (365 lines, 13 tests)
 - `backend/features/availability/service_test.go` (433 lines, 11 tests)
 - `backend/features/availability/handler_test.go` (320 lines, 11 tests)
+- `backend/features/eligibility/service_test.go` (417 lines, 9 tests)
+- `backend/features/eligibility/handler_test.go` (262 lines, 9 tests)
 
 ### Users Feature Slice (6 files, 661 lines)
 - `backend/features/users/models.go` (38 lines)
@@ -656,7 +675,18 @@ Complete smaller tasks while keeping momentum:
 - `backend/features/availability/handler_test.go` (320 lines, 11 tests)
 - Modified: `backend/main.go` (+9, -3 lines)
 
-**Total**: 72 files, ~13,255 lines (documentation + code + tests)
+### Eligibility Feature Slice (8 files, 1,110 lines)
+- `backend/features/eligibility/models.go` (37 lines)
+- `backend/features/eligibility/repository.go` (121 lines)
+- `backend/features/eligibility/service.go` (202 lines)
+- `backend/features/eligibility/service_interface.go` (8 lines)
+- `backend/features/eligibility/handler.go` (47 lines)
+- `backend/features/eligibility/routes.go` (16 lines)
+- `backend/features/eligibility/service_test.go` (417 lines, 9 tests)
+- `backend/features/eligibility/handler_test.go` (262 lines, 9 tests)
+- Modified: `backend/main.go` (+10, -1 lines)
+
+**Total**: 80 files, ~14,365 lines (documentation + code + tests)
 
 ---
 
@@ -816,6 +846,6 @@ backend/
 ---
 
 **Last Updated**: 2026-04-27  
-**Session**: Epic 8 - Story 8.6 in progress (acknowledgment + referees + availability complete)  
+**Session**: Epic 8 - Story 8.6 in progress (acknowledgment + referees + availability + eligibility complete)  
 **Branch**: epic-8-vertical-slices  
-**Status**: ✅ Availability feature COMPLETE! Story 8.6: 3/5 features done (60%) - 197 tests passing
+**Status**: ✅ Eligibility feature COMPLETE! Story 8.6: 4/5 features done (80%) - 215 tests passing
