@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	_ "github.com/lib/pq"
+	"github.com/msheeley/referee-scheduler/features/assignments"
 	"github.com/msheeley/referee-scheduler/features/matches"
 	"github.com/msheeley/referee-scheduler/features/users"
 	"github.com/msheeley/referee-scheduler/shared/config"
@@ -103,6 +104,11 @@ func main() {
 	matchesHandler := matches.NewHandler(matchesService)
 	log.Println("Matches feature initialized")
 
+	assignmentsRepo := assignments.NewRepository(db)
+	assignmentsService := assignments.NewService(assignmentsRepo)
+	assignmentsHandler := assignments.NewHandler(assignmentsService)
+	log.Println("Assignments feature initialized")
+
 	// Setup router
 	r := mux.NewRouter()
 
@@ -115,6 +121,7 @@ func main() {
 	// Feature routes
 	usersHandler.RegisterRoutes(r, authMiddleware)
 	matchesHandler.RegisterRoutes(r, authMiddleware, requirePermission)
+	assignmentsHandler.RegisterRoutes(r, authMiddleware, requirePermission)
 
 	// Referee management routes (assignors only)
 	r.HandleFunc("/api/referees", authMiddleware(assignorOnly(listRefereesHandler))).Methods("GET")
@@ -140,10 +147,10 @@ func main() {
 	r.HandleFunc("/api/referee/day-unavailability", authMiddleware(getDayUnavailabilityHandler)).Methods("GET")
 	r.HandleFunc("/api/referee/day-unavailability/{date}", authMiddleware(toggleDayUnavailabilityHandler)).Methods("POST")
 
-	// Assignment routes (assignors only)
-	r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/assign", authMiddleware(assignorOnly(assignRefereeHandler))).Methods("POST")
-	// r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/add", authMiddleware(assignorOnly(addRoleSlotHandler))).Methods("POST") // Moved to matches feature
-	r.HandleFunc("/api/matches/{match_id}/conflicts", authMiddleware(assignorOnly(getConflictingAssignmentsHandler))).Methods("GET")
+	// Assignment routes - moved to assignments feature slice
+	// Old routes commented out (now handled by assignmentsHandler):
+	// r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/assign", authMiddleware(assignorOnly(assignRefereeHandler))).Methods("POST")
+	// r.HandleFunc("/api/matches/{match_id}/conflicts", authMiddleware(assignorOnly(getConflictingAssignmentsHandler))).Methods("GET")
 
 	// Epic 1: RBAC Admin routes (requires can_assign_roles permission)
 	r.HandleFunc("/api/admin/users/{id}/roles", requirePermission("can_assign_roles", assignRoleToUser)).Methods("POST")
