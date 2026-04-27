@@ -3,7 +3,7 @@
 ## Overview
 Epic 2 implements comprehensive audit logging for all data-modifying actions and provides System Admins with tools to view, search, and export audit logs.
 
-**Status**: In Progress (Stories 2.1 & 2.2 Complete)
+**Status**: In Progress (Stories 2.1, 2.2, 2.3 Complete - 60% Done)
 
 ---
 
@@ -70,23 +70,23 @@ Epic 2 implements comprehensive audit logging for all data-modifying actions and
 
 ---
 
-### ✅ Story 2.3: Audit Log Viewer Backend API (COMPLETE - Backend Only)
-**Story Points**: 5 (Partial - Backend 40%)
+### ✅ Story 2.3: Audit Log Viewer UI (COMPLETE)
+**Story Points**: 5
 
 **Implementation**:
-- Created `getAuditLogsHandler` API endpoint
-- Supports pagination (page, page_size parameters)
-- Filter support:
-  - User ID
-  - Entity type
-  - Action type (create/update/delete)
-  - Date range (start_date, end_date)
-- Returns total count for pagination UI
-- Joins with users table to include user name/email
-- Ordered by timestamp descending (newest first)
+- **Backend**: Created `getAuditLogsHandler` API endpoint with pagination & filtering
+- **Frontend**: Created comprehensive UI at `/admin/audit-logs`
+- Features:
+  - Paginated table with expandable rows
+  - Filters: entity type, action type, user ID, date range
+  - Color-coded action badges (green=create, blue=update, red=delete)
+  - JSON viewer for old/new values
+  - Responsive design with Tailwind CSS
+  - Access restricted to System Admins
 
 **Files Created**:
-- `backend/audit_api.go` - Audit log API endpoints
+- `backend/audit_api.go` - Audit log API endpoints (185 lines)
+- `frontend/src/routes/admin/audit-logs/+page.svelte` - UI (431 lines)
 
 **Files Modified**:
 - `backend/main.go` - Register audit logs route with `can_view_audit_logs` permission
@@ -114,13 +114,14 @@ Response:
 ```
 
 **Acceptance Criteria Met**:
-- [x] Backend API endpoint created
-- [x] Paginated results
+- [x] `/admin/audit-logs` page accessible only to System Admins
+- [x] Displays paginated table with columns: timestamp, user, action, entity type, entity ID
 - [x] Search by user, entity type, date range
-- [x] Filter by action type
-- [x] Returns audit log entries with old/new values JSON
+- [x] Filter by action type (create/update/delete)
+- [x] Click row to expand and view old/new values JSON
 - [x] Default view shows last 100 entries, sorted by timestamp descending
-- [ ] Frontend UI (pending)
+- [x] Backend API endpoint with pagination & filtering
+- [x] Frontend UI with responsive design
 - [ ] Performance: loads in < 2 seconds with 10,000+ log entries (to be tested)
 
 ---
