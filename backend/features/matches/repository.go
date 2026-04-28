@@ -251,10 +251,12 @@ func (r *Repository) Update(ctx context.Context, id int64, updates map[string]in
 }
 
 // CreateRole creates a role slot for a match
+// Note: Table renamed from match_roles to assignments in migration 009
+// Note: Column renamed from role_type to position in migration 009
 func (r *Repository) CreateRole(ctx context.Context, matchID int64, roleType string) error {
 	_, err := r.db.ExecContext(
 		ctx,
-		"INSERT INTO match_roles (match_id, role_type) VALUES ($1, $2)",
+		"INSERT INTO assignments (match_id, position) VALUES ($1, $2)",
 		matchID, roleType,
 	)
 	if err != nil {
@@ -264,16 +266,18 @@ func (r *Repository) CreateRole(ctx context.Context, matchID int64, roleType str
 }
 
 // GetRoles retrieves all role slots for a match
+// Note: Table renamed from match_roles to assignments in migration 009
+// Note: Columns renamed: role_type → position, assigned_referee_id → referee_id
 func (r *Repository) GetRoles(ctx context.Context, matchID int64) ([]MatchRole, error) {
 	query := `
-		SELECT mr.id, mr.match_id, mr.role_type, mr.assigned_referee_id,
+		SELECT a.id, a.match_id, a.position, a.referee_id,
 		       COALESCE(u.first_name || ' ' || u.last_name, u.name) as referee_name,
-		       mr.acknowledged, mr.acknowledged_at,
-		       mr.created_at, mr.updated_at
-		FROM match_roles mr
-		LEFT JOIN users u ON mr.assigned_referee_id = u.id
-		WHERE mr.match_id = $1
-		ORDER BY mr.role_type
+		       a.acknowledged, a.acknowledged_at,
+		       a.created_at, a.updated_at
+		FROM assignments a
+		LEFT JOIN users u ON a.referee_id = u.id
+		WHERE a.match_id = $1
+		ORDER BY a.position
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, matchID)
@@ -338,7 +342,7 @@ func (r *Repository) DeleteRoles(ctx context.Context, matchID int64, roleTypes [
 	}
 
 	query := fmt.Sprintf(
-		"DELETE FROM match_roles WHERE match_id = $1 AND role_type IN (%s)",
+		"DELETE FROM assignments WHERE match_id = $1 AND position IN (%s)",
 		strings.Join(placeholders, ", "),
 	)
 
@@ -354,7 +358,7 @@ func (r *Repository) RoleExists(ctx context.Context, matchID int64, roleType str
 	var exists bool
 	err := r.db.QueryRowContext(
 		ctx,
-		"SELECT EXISTS(SELECT 1 FROM match_roles WHERE match_id = $1 AND role_type = $2)",
+		"SELECT EXISTS(SELECT 1 FROM assignments WHERE match_id = $1 AND position = $2)",
 		matchID, roleType,
 	).Scan(&exists)
 
@@ -365,10 +369,11 @@ func (r *Repository) RoleExists(ctx context.Context, matchID int64, roleType str
 }
 
 // LogEdit logs a match edit to assignment_history
+// Note: Column renamed from role_type to position in migration 009
 func (r *Repository) LogEdit(ctx context.Context, matchID int64, actorID int64, changeDescription string) error {
 	_, err := r.db.ExecContext(
 		ctx,
-		`INSERT INTO assignment_history (match_id, role_type, action, actor_id)
+		`INSERT INTO assignment_history (match_id, position, action, actor_id)
 		 VALUES ($1, 'match_edit', $2, $3)`,
 		matchID, changeDescription, actorID,
 	)
@@ -403,7 +408,7 @@ func (r *Repository) GetAgeGroup(ctx context.Context, matchID int64) (*string, e
 func (r *Repository) GetCurrentRoles(ctx context.Context, matchID int64) ([]string, error) {
 	rows, err := r.db.QueryContext(
 		ctx,
-		"SELECT role_type FROM match_roles WHERE match_id = $1 ORDER BY role_type",
+		"SELECT position FROM assignments WHERE match_id = $1 ORDER BY position",
 		matchID,
 	)
 	if err != nil {
