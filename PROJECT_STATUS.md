@@ -1,20 +1,23 @@
 # Referee Scheduler - Project Status
 
-**Date**: 2026-04-23  
+**Date**: 2026-04-28  
 **Project**: Referee Scheduling Application  
 **Developer**: Matt with Claude Code assistance  
 **Target**: Production-ready MVP by August 2026
 
 ---
 
-## 🎯 Overall Status: 91% COMPLETE
+## 🎯 Overall Status: 95% COMPLETE
 
 **Core MVP**: ✅ **COMPLETE**  
-**Deployment**: 🚧 In Progress (Epic 7)
+**Deployment**: 🚧 In Progress (Epic 7 - original)  
+**V2 Enhancements**: 🚧 In Progress
 
 ---
 
 ## Epic Completion Status
+
+### Original Epics (MVP)
 
 | Epic | Status | Completion | Stories |
 |------|--------|------------|---------|
@@ -26,9 +29,16 @@
 | **Epic 6** - Referee Assignment View | ✅ COMPLETE | 100% | 2/2 |
 | **Epic 7** - Deployment | 🚧 IN PROGRESS | 50% | 1/2 |
 
-**Total Stories**: 23/24 complete (96%)  
+### V2 Epics
+
+| Epic | Status | Completion | Stories |
+|------|--------|------------|---------|
+| **V2 Epic 7** - Scheduling Interface Improvements | ✅ COMPLETE | 100% | 3/3 |
+| **V2 Epic 8** - Backend Refactoring | ✅ COMPLETE | 100% | 9/9 |
+
+**Total Stories**: 23/24 original + 12/12 V2 complete  
 **MVP Stories**: 22/22 complete (100%) — All MVP stories complete!  
-**Required for Launch**: 20/21 complete (95%)
+**V2 Stories**: 12/12 complete (100%)
 
 ---
 
@@ -132,6 +142,16 @@
 - ✅ Deployment scripts (initial-setup.sh, ssl-setup.sh, traefik-setup.sh)
 - ✅ Complete deployment documentation
 
+### V2: Scheduling Interface Improvements (Epic 7)
+- ✅ Weekend date range shortcuts (This Weekend / Next Weekend) on all scheduling pages
+- ✅ Server-side pagination with page size selector (25/50/100)
+- ✅ Pagination controls (Previous, numbered pages, Next) on all match lists
+- ✅ Scroll position retention after assignment/removal actions
+- ✅ Server-side filtering (age group, assignment status, date range, cancelled)
+- ✅ "Apply Filters" button pattern (no auto-trigger on filter change)
+- ✅ Dedicated referee assignments page (`/referee/assignments`)
+- ✅ Dashboard assignment previews (up to 3) with link to full assignments page
+
 ---
 
 ## ⏸️ What's Pending
@@ -142,7 +162,7 @@
   - Full resolution UI with side-by-side comparison deferred
   - **Decision**: Can be added later if duplicate issues arise in production
 
-### Epic 7 - Deployment
+### Epic 7 - Deployment (Original)
 - ✅ **Story 7.1**: Docker containerization & self-hosted deployment
   - Production-ready Docker images (Dockerfile.prod for frontend)
   - Production docker-compose.yml with Traefik reverse proxy
@@ -155,6 +175,10 @@
   - Current: Self-hosted deployment ready
   - Future: Azure/cloud deployment if needed
   - All infrastructure is cloud-agnostic
+
+### V2 Epic 7 - Minor Outstanding Items
+- ⏸️ URL query parameter sync for pagination (`?page=2`) — deferred, low priority
+- ⏸️ Cross-browser scroll position testing (Chrome, Firefox, Safari) — needs manual verification
 
 ---
 

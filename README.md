@@ -326,16 +326,17 @@ Key documents:
 ## Project Status
 
 ✅ **Epics 1-7 Complete** - All core features implemented  
-🚧 **Epic 8 In Progress (91%)** - Backend refactoring to vertical slice architecture
+✅ **V2 Epics 7-8 Complete** - Scheduling UI improvements and backend refactoring
 
 **Recent Milestones**:
 - ✅ Epic 1: Role-Based Access Control (RBAC)
 - ✅ Epic 2: Audit Logging & Retention
 - ✅ Epic 3-6: Core feature set (matches, assignments, availability)
 - ✅ Epic 7: Self-hosted deployment infrastructure
-- 🚧 Epic 8: Vertical slice architecture migration (7/9 stories complete)
+- ✅ V2 Epic 7: Scheduling interface improvements (weekend filters, pagination, scroll retention)
+- ✅ V2 Epic 8: Vertical slice architecture migration (9/9 stories complete)
 
-**Current Architecture**: Vertical Slice Architecture with 7 feature slices and shared infrastructure. See [EPIC_8_PROGRESS.md](EPIC_8_PROGRESS.md) for details.
+**Current Architecture**: Vertical Slice Architecture with 7 feature slices and shared infrastructure.
 
 See [PROJECT_STATUS.md](PROJECT_STATUS.md) for detailed status.
 

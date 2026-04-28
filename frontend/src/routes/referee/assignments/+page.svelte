@@ -107,6 +107,55 @@
 		loadAssignments();
 	}
 
+	function getNextSaturday(fromDate: Date): Date {
+		const d = new Date(fromDate);
+		const day = d.getDay();
+		const daysUntilSat = (6 - day + 7) % 7 || 7;
+		d.setDate(d.getDate() + daysUntilSat);
+		return d;
+	}
+
+	function formatDateParam(d: Date): string {
+		const y = d.getFullYear();
+		const m = String(d.getMonth() + 1).padStart(2, '0');
+		const day = String(d.getDate()).padStart(2, '0');
+		return `${y}-${m}-${day}`;
+	}
+
+	function setWeekend(which: 'this' | 'next') {
+		const today = new Date();
+		const day = today.getDay();
+		let saturday: Date;
+
+		if (which === 'this') {
+			if (day === 6) {
+				saturday = new Date(today);
+			} else if (day === 0) {
+				saturday = new Date(today);
+				saturday.setDate(today.getDate() - 1);
+			} else {
+				saturday = getNextSaturday(today);
+			}
+		} else {
+			if (day === 6) {
+				saturday = new Date(today);
+				saturday.setDate(today.getDate() + 7);
+			} else if (day === 0) {
+				saturday = new Date(today);
+				saturday.setDate(today.getDate() + 6);
+			} else {
+				saturday = getNextSaturday(today);
+				saturday.setDate(saturday.getDate() + 7);
+			}
+		}
+
+		const sunday = new Date(saturday);
+		sunday.setDate(saturday.getDate() + 1);
+
+		dateFrom = formatDateParam(saturday);
+		dateTo = formatDateParam(sunday);
+	}
+
 	async function acknowledgeAssignment(match: Match) {
 		acknowledging = true;
 
@@ -213,6 +262,11 @@
 					/>
 				</div>
 			</div>
+			<div class="weekend-shortcuts">
+				<span class="shortcut-label">Quick select:</span>
+				<button class="btn-shortcut" on:click={() => { setWeekend('this'); applyFilters(); }}>This Weekend</button>
+				<button class="btn-shortcut" on:click={() => { setWeekend('next'); applyFilters(); }}>Next Weekend</button>
+			</div>
 			<div class="filters-footer">
 				<div class="stats">
 					<strong>{totalMatches}</strong> assignment{totalMatches !== 1 ? 's' : ''}
@@ -224,6 +278,14 @@
 					{/if}
 				</div>
 				<div class="filter-actions">
+					<div class="per-page-selector">
+						<label for="perPage">Per page:</label>
+						<select id="perPage" bind:value={perPage} on:change={() => { currentPage = 1; loadAssignments(); }}>
+							<option value={25}>25</option>
+							<option value={50}>50</option>
+							<option value={100}>100</option>
+						</select>
+					</div>
 					<button class="btn-small btn-primary" on:click={applyFilters}>
 						Apply Filters
 					</button>
@@ -436,6 +498,36 @@
 		flex-wrap: wrap;
 	}
 
+	.weekend-shortcuts {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+	}
+
+	.shortcut-label {
+		font-size: 0.875rem;
+		color: #6b7280;
+		font-weight: 500;
+	}
+
+	.btn-shortcut {
+		padding: 0.375rem 0.75rem;
+		font-size: 0.8rem;
+		border: 1px solid #3b82f6;
+		border-radius: 0.375rem;
+		background: white;
+		color: #3b82f6;
+		cursor: pointer;
+		font-weight: 500;
+		transition: all 0.2s;
+	}
+
+	.btn-shortcut:hover {
+		background: #3b82f6;
+		color: white;
+	}
+
 	.filters-footer {
 		display: flex;
 		justify-content: space-between;
@@ -448,6 +540,27 @@
 	.filter-actions {
 		display: flex;
 		gap: 0.5rem;
+		align-items: center;
+	}
+
+	.per-page-selector {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		font-size: 0.875rem;
+		color: #6b7280;
+	}
+
+	.per-page-selector label {
+		font-weight: 500;
+		white-space: nowrap;
+	}
+
+	.per-page-selector select {
+		padding: 0.25rem 0.375rem;
+		border: 1px solid #d1d5db;
+		border-radius: 0.25rem;
+		font-size: 0.875rem;
 	}
 
 	.filter-group {
