@@ -7,10 +7,10 @@ import (
 
 // ServiceInterface defines the interface for match business logic
 type ServiceInterface interface {
-	ParseCSV(file multipart.File, filename string) (*ImportPreviewResponse, error)
+	ParseCSV(ctx context.Context, file multipart.File, filename string) (*ImportPreviewResponse, error)
 	ImportMatches(ctx context.Context, req *ImportConfirmRequest, currentUserID int64) (*ImportResult, error)
 	CreateRoleSlotsForMatch(ctx context.Context, matchID int64, ageGroup string) error
-	ListMatches(ctx context.Context) ([]MatchWithRoles, error)
+	ListMatches(ctx context.Context, params *MatchListParams) (*PaginatedMatchesResponse, error)
 	ListActiveMatches(ctx context.Context) ([]MatchWithRoles, error)
 	ListArchivedMatches(ctx context.Context) ([]MatchWithRoles, error)
 	GetMatchWithRoles(ctx context.Context, matchID int64) (*MatchWithRoles, error)

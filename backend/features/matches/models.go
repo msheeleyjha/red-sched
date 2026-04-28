@@ -59,6 +59,7 @@ type CSVRow struct {
 	AgeGroup     *string `json:"age_group"`
 	Error        *string `json:"error"`
 	FilterReason *string `json:"filter_reason,omitempty"` // Story 6.4: Why row was filtered
+	ExistsInDB   bool    `json:"exists_in_db"`            // True if reference_id already exists in database
 	RowNumber    int     `json:"row_number"`
 }
 
@@ -85,9 +86,10 @@ type ImportConfirmRequest struct {
 
 // ImportFilters contains filtering options for CSV import (Story 6.4)
 type ImportFilters struct {
-	FilterPractices bool     `json:"filter_practices"` // Skip matches with "Practice" in team name
-	FilterAway      bool     `json:"filter_away"`      // Skip away matches
-	HomeLocations   []string `json:"home_locations"`   // List of home venue names/patterns
+	FilterPractices    bool     `json:"filter_practices"`     // Skip matches with "Practice" or "Training" in event name
+	FilterAway         bool     `json:"filter_away"`          // Skip away matches
+	HomeLocations      []string `json:"home_locations"`       // List of home venue names/patterns
+	CustomExcludeTerms []string `json:"custom_exclude_terms"` // User-supplied terms to match against event name
 }
 
 // MatchUpdateRequest represents the update payload for a match
@@ -171,4 +173,24 @@ type ExcludedReferenceID struct {
 type ExcludeReferenceIDRequest struct {
 	ReferenceID string  `json:"reference_id"`
 	Reason      *string `json:"reason"`
+}
+
+// MatchListParams contains pagination and filtering parameters for listing matches
+type MatchListParams struct {
+	Page             int    `json:"page"`
+	PerPage          int    `json:"per_page"`
+	DateFrom         string `json:"date_from,omitempty"`
+	DateTo           string `json:"date_to,omitempty"`
+	AgeGroup         string `json:"age_group,omitempty"`
+	AssignmentStatus string `json:"assignment_status,omitempty"`
+	ShowCancelled    bool   `json:"show_cancelled"`
+}
+
+// PaginatedMatchesResponse contains paginated match results
+type PaginatedMatchesResponse struct {
+	Matches    []MatchWithRoles `json:"matches"`
+	Total      int              `json:"total"`
+	Page       int              `json:"page"`
+	PerPage    int              `json:"per_page"`
+	TotalPages int              `json:"total_pages"`
 }

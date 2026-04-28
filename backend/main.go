@@ -165,8 +165,9 @@ func main() {
 	eligibilityHandler.RegisterRoutes(r, authMW.RequireAuth, requirePermission)
 	matchReportsHandler.RegisterRoutes(r, authMW.RequireAuth)
 
-	// TODO: Migrate this route to availability feature
+	// TODO: Migrate these routes to availability feature
 	r.HandleFunc("/api/referee/matches", authMW.RequireAuth(getEligibleMatchesForRefereeHandler)).Methods("GET")
+	r.HandleFunc("/api/referee/assignments", authMW.RequireAuth(getRefereeAssignmentsHandler)).Methods("GET")
 
 	// Epic 1: RBAC Admin routes (requires can_assign_roles permission)
 	r.HandleFunc("/api/admin/users/{id}/roles", requirePermission("can_assign_roles", assignRoleToUser)).Methods("POST")

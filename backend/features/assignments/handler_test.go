@@ -33,6 +33,14 @@ func (m *mockService) CheckConflicts(ctx context.Context, matchID int64, referee
 	return nil, nil
 }
 
+func (m *mockService) GetRefereeHistory(ctx context.Context, refereeID int64) ([]RefereeHistoryMatch, error) {
+	return []RefereeHistoryMatch{}, nil
+}
+
+func (m *mockService) MarkMatchAsViewed(ctx context.Context, matchID int64, refereeID int64) error {
+	return nil
+}
+
 func TestHandler_AssignReferee(t *testing.T) {
 	t.Run("successfully assigns referee", func(t *testing.T) {
 		mockSvc := &mockService{

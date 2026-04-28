@@ -143,7 +143,7 @@
 	}
 
 	function getCertStatusBadge(certStatus: string) {
-		const badges = {
+		const badges: Record<string, { class: string; text: string }> = {
 			valid: { class: 'badge-success', text: 'Valid' },
 			expiring_soon: { class: 'badge-warning', text: 'Expiring Soon' },
 			expired: { class: 'badge-error', text: 'Expired' },
@@ -153,7 +153,7 @@
 	}
 
 	function getStatusBadge(status: string) {
-		const badges = {
+		const badges: Record<string, { class: string; text: string }> = {
 			pending: { class: 'badge-warning', text: 'Pending' },
 			active: { class: 'badge-success', text: 'Active' },
 			inactive: { class: 'badge-secondary', text: 'Inactive' },

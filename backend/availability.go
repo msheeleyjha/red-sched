@@ -5,11 +5,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/msheeley/referee-scheduler/features/eligibility"
 	"github.com/msheeley/referee-scheduler/shared/middleware"
 )
+
+// PaginatedRefereeMatchesResponse contains paginated referee match results
+type PaginatedRefereeMatchesResponse struct {
+	Matches    []MatchForReferee `json:"matches"`
+	Total      int               `json:"total"`
+	Page       int               `json:"page"`
+	PerPage    int               `json:"per_page"`
+	TotalPages int               `json:"total_pages"`
+}
 
 // ConflictingMatch represents another assignment that conflicts with this one
 type ConflictingMatch struct {
@@ -43,6 +53,167 @@ type MatchForReferee struct {
 	ConflictingMatches []ConflictingMatch `json:"conflicting_matches,omitempty"` // Details of conflicting matches
 }
 
+// getRefereeAssignmentsHandler returns only matches assigned to the current referee
+func getRefereeAssignmentsHandler(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.GetUserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized - user not found in context", http.StatusUnauthorized)
+		return
+	}
+
+	q := r.URL.Query()
+
+	page := 1
+	if v := q.Get("page"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	perPage := 25
+	if v := q.Get("per_page"); v != "" {
+		if pp, err := strconv.Atoi(v); err == nil && pp > 0 && pp <= 100 {
+			perPage = pp
+		}
+	}
+
+	dateFrom := q.Get("date_from")
+	dateTo := q.Get("date_to")
+
+	queryArgs := []interface{}{user.ID}
+	dateClause := "m.match_date >= CURRENT_DATE"
+	argIdx := 2
+
+	if dateFrom != "" {
+		dateClause = fmt.Sprintf("m.match_date >= $%d", argIdx)
+		queryArgs = append(queryArgs, dateFrom)
+		argIdx++
+	}
+	if dateTo != "" {
+		dateClause += fmt.Sprintf(" AND m.match_date <= $%d", argIdx)
+		queryArgs = append(queryArgs, dateTo)
+		argIdx++
+	}
+
+	rows, err := db.Query(fmt.Sprintf(`
+		SELECT
+			m.id, m.event_name, m.team_name, m.age_group,
+			m.match_date, m.start_time, m.end_time,
+			m.location, m.description, m.status,
+			a.position, a.acknowledged, a.acknowledged_at
+		FROM matches m
+		JOIN assignments a ON a.match_id = m.id AND a.referee_id = $1
+		WHERE %s
+		  AND m.archived = FALSE
+		ORDER BY m.match_date ASC, m.start_time ASC, m.id ASC
+	`, dateClause), queryArgs...)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Database error: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	matches := []MatchForReferee{}
+
+	for rows.Next() {
+		var m MatchForReferee
+		var matchDate time.Time
+		var description sql.NullString
+		var assignedRole sql.NullString
+		var acknowledged bool
+		var acknowledgedAt sql.NullTime
+
+		err := rows.Scan(
+			&m.ID, &m.EventName, &m.TeamName, &m.AgeGroup,
+			&matchDate, &m.StartTime, &m.EndTime,
+			&m.Location, &description, &m.Status,
+			&assignedRole, &acknowledged, &acknowledgedAt,
+		)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Scan error: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		m.MatchDate = matchDate.Format("2006-01-02")
+		if description.Valid {
+			m.Description = &description.String
+		}
+
+		m.IsAssigned = true
+		if assignedRole.Valid {
+			m.AssignedRole = &assignedRole.String
+		}
+		m.Acknowledged = acknowledged
+		if acknowledgedAt.Valid {
+			ackTime := acknowledgedAt.Time.Format(time.RFC3339)
+			m.AcknowledgedAt = &ackTime
+		}
+
+		// Check for scheduling conflicts
+		conflictRows, conflictErr := db.Query(`
+			SELECT
+				m2.id, m2.event_name, m2.team_name,
+				m2.start_time, mr2.position
+			FROM matches m2
+			JOIN assignments mr2 ON mr2.match_id = m2.id
+			WHERE mr2.referee_id = $1
+			  AND m2.id != $2
+			  AND m2.status = 'active'
+			  AND m2.archived = FALSE
+			  AND m2.match_date = $3
+			  AND m2.start_time < $5
+			  AND m2.end_time > $4
+		`, user.ID, m.ID, matchDate, m.StartTime, m.EndTime)
+
+		if conflictErr != nil {
+			fmt.Printf("Warning: Failed to check conflicts for match %d: %v\n", m.ID, conflictErr)
+		} else {
+			conflicts := []ConflictingMatch{}
+			for conflictRows.Next() {
+				var c ConflictingMatch
+				scanErr := conflictRows.Scan(&c.MatchID, &c.EventName, &c.TeamName, &c.StartTime, &c.RoleType)
+				if scanErr != nil {
+					fmt.Printf("Warning: Failed to scan conflict: %v\n", scanErr)
+					continue
+				}
+				conflicts = append(conflicts, c)
+			}
+			conflictRows.Close()
+
+			if len(conflicts) > 0 {
+				m.HasConflict = true
+				m.ConflictingMatches = conflicts
+			}
+		}
+
+		matches = append(matches, m)
+	}
+
+	total := len(matches)
+	totalPages := total / perPage
+	if total%perPage > 0 {
+		totalPages++
+	}
+
+	start := (page - 1) * perPage
+	if start > total {
+		start = total
+	}
+	end := start + perPage
+	if end > total {
+		end = total
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(PaginatedRefereeMatchesResponse{
+		Matches:    matches[start:end],
+		Total:      total,
+		Page:       page,
+		PerPage:    perPage,
+		TotalPages: totalPages,
+	})
+}
+
 // getEligibleMatchesForRefereeHandler returns all upcoming matches that the current referee is eligible for
 func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.GetUserFromContext(r.Context())
@@ -50,6 +221,26 @@ func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Unauthorized - user not found in context", http.StatusUnauthorized)
 		return
 	}
+
+	// Parse query parameters
+	q := r.URL.Query()
+
+	page := 1
+	if v := q.Get("page"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	perPage := 25
+	if v := q.Get("per_page"); v != "" {
+		if pp, err := strconv.Atoi(v); err == nil && pp > 0 && pp <= 100 {
+			perPage = pp
+		}
+	}
+
+	dateFrom := q.Get("date_from")
+	dateTo := q.Get("date_to")
 
 	// Check if user has completed their profile
 	var hasProfile bool
@@ -69,9 +260,10 @@ func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	if !hasProfile {
-		// Return empty list if profile incomplete
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]MatchForReferee{})
+		json.NewEncoder(w).Encode(PaginatedRefereeMatchesResponse{
+			Matches: []MatchForReferee{}, Page: 1, PerPage: perPage, Total: 0, TotalPages: 0,
+		})
 		return
 	}
 
@@ -94,32 +286,44 @@ func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Get all upcoming, non-cancelled, non-archived matches
-	// Exclude days marked unavailable UNLESS the referee is already assigned to that match
-	rows, err := db.Query(`
+	// Build dynamic WHERE clause for date range filtering
+	queryArgs := []interface{}{user.ID}
+	dateClause := "m.match_date >= CURRENT_DATE"
+	argIdx := 2
+
+	if dateFrom != "" {
+		dateClause = fmt.Sprintf("m.match_date >= $%d", argIdx)
+		queryArgs = append(queryArgs, dateFrom)
+		argIdx++
+	}
+	if dateTo != "" {
+		dateClause += fmt.Sprintf(" AND m.match_date <= $%d", argIdx)
+		queryArgs = append(queryArgs, dateTo)
+		argIdx++
+	}
+
+	rows, err := db.Query(fmt.Sprintf(`
 		SELECT
 			m.id, m.event_name, m.team_name, m.age_group,
 			m.match_date, m.start_time, m.end_time,
 			m.location, m.description, m.status
 		FROM matches m
-		WHERE m.match_date >= CURRENT_DATE
+		WHERE %s
 		  AND m.status = 'active'
 		  AND m.archived = FALSE
 		  AND (
-			-- Either the day is not marked unavailable
 			NOT EXISTS (
 				SELECT 1 FROM day_unavailability du
 				WHERE du.referee_id = $1 AND du.unavailable_date = m.match_date
 			)
 			OR
-			-- OR the referee is assigned to this match (always show assignments)
 			EXISTS (
 				SELECT 1 FROM assignments mr
 				WHERE mr.match_id = m.id AND mr.referee_id = $1
 			)
 		  )
 		ORDER BY m.match_date ASC, m.start_time ASC, m.id ASC
-	`, user.ID)
+	`, dateClause), queryArgs...)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Database error: %v", err), http.StatusInternalServerError)
 		return
@@ -283,6 +487,27 @@ func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request)
 		matches = append(matches, m)
 	}
 
+	total := len(matches)
+	totalPages := total / perPage
+	if total%perPage > 0 {
+		totalPages++
+	}
+
+	start := (page - 1) * perPage
+	if start > total {
+		start = total
+	}
+	end := start + perPage
+	if end > total {
+		end = total
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(matches)
+	json.NewEncoder(w).Encode(PaginatedRefereeMatchesResponse{
+		Matches:    matches[start:end],
+		Total:      total,
+		Page:       page,
+		PerPage:    perPage,
+		TotalPages: totalPages,
+	})
 }

@@ -74,6 +74,18 @@ func (m *mockRepository) LogAssignment(ctx context.Context, history *AssignmentH
 	return nil
 }
 
+func (m *mockRepository) GetRefereeMatchHistory(ctx context.Context, refereeID int64) ([]RefereeHistoryMatch, error) {
+	return []RefereeHistoryMatch{}, nil
+}
+
+func (m *mockRepository) MarkAssignmentAsViewed(ctx context.Context, matchID int64, refereeID int64) error {
+	return nil
+}
+
+func (m *mockRepository) ResetViewedStatusForMatch(ctx context.Context, matchID int64) error {
+	return nil
+}
+
 func int64Ptr(i int64) *int64 {
 	return &i
 }

@@ -28,7 +28,8 @@ type RepositoryInterface interface {
 
 	// Match queries
 	MatchExists(ctx context.Context, matchID int64) (bool, error)
-	ListActive(ctx context.Context) ([]Match, error)
+	ListActive(ctx context.Context, params *MatchListParams) ([]Match, error)
+	CountActive(ctx context.Context, params *MatchListParams) (int, error)
 	ListArchived(ctx context.Context) ([]Match, error)
 
 	// Archival operations
@@ -467,18 +468,55 @@ func GetAgeGroupInt(ageGroup *string) (int, error) {
 	return age, nil
 }
 
-// ListActive retrieves all non-archived matches
-func (r *Repository) ListActive(ctx context.Context) ([]Match, error) {
-	query := `
+// buildActiveWhereClause builds WHERE conditions and args for active match queries with optional filtering
+func buildActiveWhereClause(params *MatchListParams) (string, []interface{}) {
+	where := "WHERE status != 'deleted' AND archived = FALSE"
+	args := []interface{}{}
+	argIdx := 1
+
+	if params != nil {
+		if !params.ShowCancelled {
+			where += " AND status = 'active'"
+		}
+		if params.DateFrom != "" {
+			where += fmt.Sprintf(" AND match_date >= $%d", argIdx)
+			args = append(args, params.DateFrom)
+			argIdx++
+		}
+		if params.DateTo != "" {
+			where += fmt.Sprintf(" AND match_date <= $%d", argIdx)
+			args = append(args, params.DateTo)
+			argIdx++
+		}
+		if params.AgeGroup != "" {
+			where += fmt.Sprintf(" AND age_group = $%d", argIdx)
+			args = append(args, params.AgeGroup)
+			argIdx++
+		}
+	}
+
+	return where, args
+}
+
+// ListActive retrieves non-archived matches with optional date filtering and pagination
+func (r *Repository) ListActive(ctx context.Context, params *MatchListParams) ([]Match, error) {
+	where, args := buildActiveWhereClause(params)
+
+	query := fmt.Sprintf(`
 		SELECT id, event_name, team_name, age_group, match_date, start_time, end_time,
 		       location, description, reference_id, status, archived, archived_at, archived_by,
 		       created_by, created_at, updated_at
 		FROM matches
-		WHERE status != 'deleted' AND archived = FALSE
+		%s
 		ORDER BY match_date ASC, start_time ASC, id ASC
-	`
+	`, where)
 
-	rows, err := r.db.QueryContext(ctx, query)
+	if params != nil && params.PerPage > 0 {
+		offset := (params.Page - 1) * params.PerPage
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", params.PerPage, offset)
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list active matches: %w", err)
 	}
@@ -513,6 +551,21 @@ func (r *Repository) ListActive(ctx context.Context) ([]Match, error) {
 	}
 
 	return matches, nil
+}
+
+// CountActive returns the total count of non-archived matches matching the filter criteria
+func (r *Repository) CountActive(ctx context.Context, params *MatchListParams) (int, error) {
+	where, args := buildActiveWhereClause(params)
+
+	query := fmt.Sprintf("SELECT COUNT(*) FROM matches %s", where)
+
+	var count int
+	err := r.db.QueryRowContext(ctx, query, args...).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count active matches: %w", err)
+	}
+
+	return count, nil
 }
 
 // ListArchived retrieves all archived matches

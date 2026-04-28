@@ -32,12 +32,14 @@
 
 	let user: User | null = null;
 	let matches: Match[] = [];
+	let assignedMatches: Match[] = [];
+	let totalAssignments = 0;
 	let loading = true;
 	let error = '';
 
 	onMount(async () => {
 		await loadUser();
-		await loadMatches();
+		await Promise.all([loadMatches(), loadAssignments()]);
 	});
 
 	async function loadUser() {
@@ -68,8 +70,7 @@
 
 			if (response.ok) {
 				const data = await response.json();
-				// Ensure matches is always an array, even if API returns null
-				matches = data || [];
+				matches = data.matches || [];
 			} else {
 				error = 'Failed to load matches';
 			}
@@ -78,6 +79,22 @@
 			console.error(err);
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function loadAssignments() {
+		try {
+			const response = await fetch(`${API_URL}/api/referee/assignments?per_page=3`, {
+				credentials: 'include'
+			});
+
+			if (response.ok) {
+				const data = await response.json();
+				assignedMatches = data.matches || [];
+				totalAssignments = data.total || 0;
+			}
+		} catch (err) {
+			console.error('Failed to load assignments:', err);
 		}
 	}
 
@@ -125,8 +142,6 @@
 		? `${user.first_name} ${user.last_name}`
 		: user?.name || 'User';
 
-	$: assignedMatches = matches.filter((m) => m.is_assigned).slice(0, 5);
-	$: availableMatches = matches.filter((m) => !m.is_assigned && m.is_available).slice(0, 5);
 	$: upcomingUnmarked = matches.filter((m) => !m.is_assigned && !m.is_available).slice(0, 3);
 </script>
 
@@ -174,6 +189,11 @@
 						<div class="nav-title">Import Matches</div>
 						<div class="nav-description">Upload match schedule</div>
 					</a>
+					<a href="/referee/assignments" class="nav-card">
+						<div class="nav-icon">📋</div>
+						<div class="nav-title">My Assignments</div>
+						<div class="nav-description">View your match assignments</div>
+					</a>
 					<a href="/referee/matches" class="nav-card">
 						<div class="nav-icon">✅</div>
 						<div class="nav-title">My Availability</div>
@@ -185,6 +205,11 @@
 						<div class="nav-description">Update your information</div>
 					</a>
 				{:else}
+					<a href="/referee/assignments" class="nav-card">
+						<div class="nav-icon">📋</div>
+						<div class="nav-title">My Assignments</div>
+						<div class="nav-description">View your match assignments</div>
+					</a>
 					<a href="/referee/matches" class="nav-card">
 						<div class="nav-icon">⚽</div>
 						<div class="nav-title">My Matches</div>
@@ -208,7 +233,7 @@
 				<div class="error-box">
 					<p>{error}</p>
 				</div>
-			{:else if assignedMatches.length === 0 && availableMatches.length === 0 && upcomingUnmarked.length === 0}
+			{:else if assignedMatches.length === 0 && upcomingUnmarked.length === 0}
 				<div class="info-box">
 					<p>No upcoming matches at this time.</p>
 					{#if user.role === 'referee'}
@@ -218,7 +243,9 @@
 			{:else}
 				{#if assignedMatches.length > 0}
 					<div class="match-group">
-						<h4>My Assignments ({assignedMatches.length})</h4>
+						<h4>
+							<a href="/referee/assignments" class="section-link">My Assignments ({totalAssignments})</a>
+						</h4>
 						<div class="match-list">
 							{#each assignedMatches as match}
 								<div class="match-item assigned">
@@ -243,35 +270,8 @@
 								</div>
 							{/each}
 						</div>
-						{#if matches.filter((m) => m.is_assigned).length > 5}
-							<a href="/referee/matches" class="view-all-link">View all assignments →</a>
-						{/if}
-					</div>
-				{/if}
-
-				{#if availableMatches.length > 0}
-					<div class="match-group">
-						<h4>Marked Available ({availableMatches.length})</h4>
-						<div class="match-list">
-							{#each availableMatches as match}
-								<div class="match-item available">
-									<div class="match-header">
-										<span class="match-title">{match.event_name}</span>
-									</div>
-									<div class="match-details">
-										<span class="match-date">📅 {formatDate(match.match_date)}</span>
-										<span class="match-time">🕐 {formatTime(match.start_time)}</span>
-										<span class="match-location">📍 {match.location}</span>
-									</div>
-									<div class="match-info">
-										<span class="age-badge">{match.age_group}</span>
-										<span class="team-name">{match.team_name}</span>
-									</div>
-								</div>
-							{/each}
-						</div>
-						{#if matches.filter((m) => !m.is_assigned && m.is_available).length > 5}
-							<a href="/referee/matches" class="view-all-link">View all available matches →</a>
+						{#if totalAssignments > 3}
+							<a href="/referee/assignments" class="view-all-link">View all {totalAssignments} assignments →</a>
 						{/if}
 					</div>
 				{/if}
@@ -467,11 +467,6 @@
 		background-color: #eff6ff;
 	}
 
-	.match-item.available {
-		border-color: #10b981;
-		background-color: #f0fdf4;
-	}
-
 	.match-item.unmarked {
 		border-color: #f59e0b;
 		background-color: #fffbeb;
@@ -545,6 +540,16 @@
 	.team-name {
 		color: var(--text-secondary);
 		font-size: 0.875rem;
+	}
+
+	.section-link {
+		color: var(--primary-color);
+		text-decoration: none;
+		transition: color 0.2s;
+	}
+
+	.section-link:hover {
+		text-decoration: underline;
 	}
 
 	.view-all-link {

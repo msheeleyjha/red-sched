@@ -38,7 +38,7 @@ func (h *Handler) ParseCSV(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	// Parse CSV using service
-	response, err := h.service.ParseCSV(file, header.Filename)
+	response, err := h.service.ParseCSV(r.Context(), file, header.Filename)
 	if err != nil {
 		errors.WriteError(w, err)
 		return
@@ -72,16 +72,42 @@ func (h *Handler) ImportMatches(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
-// ListMatches returns all matches for assignor schedule view
+// ListMatches returns paginated matches for assignor schedule view
 func (h *Handler) ListMatches(w http.ResponseWriter, r *http.Request) {
-	matches, err := h.service.ListMatches(r.Context())
+	q := r.URL.Query()
+
+	page := 1
+	if v := q.Get("page"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	perPage := 25
+	if v := q.Get("per_page"); v != "" {
+		if pp, err := strconv.Atoi(v); err == nil && pp > 0 {
+			perPage = pp
+		}
+	}
+
+	params := &MatchListParams{
+		Page:             page,
+		PerPage:          perPage,
+		DateFrom:         q.Get("date_from"),
+		DateTo:           q.Get("date_to"),
+		AgeGroup:         q.Get("age_group"),
+		AssignmentStatus: q.Get("assignment_status"),
+		ShowCancelled:    q.Get("show_cancelled") == "true",
+	}
+
+	result, err := h.service.ListMatches(r.Context(), params)
 	if err != nil {
 		errors.WriteError(w, err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(matches)
+	json.NewEncoder(w).Encode(result)
 }
 
 // UpdateMatch updates a match

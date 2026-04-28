@@ -16,10 +16,21 @@
 	let errorRows: any[] = [];
 	let uniqueLocations: string[] = [];
 
+	// Duplicate resolution: track which row the user picks per duplicate group
+	// Key: group index, Value: set of selected row numbers
+	let duplicateSelections: Record<number, Set<number>> = {};
+
 	// Filter options (Story 6.4)
 	let filterPractices = false;
 	let filterAway = false;
 	let homeLocations: string[] = [];
+	let customExcludeText = '';
+
+	// Section collapse state (all start collapsed)
+	let showDuplicates = false;
+	let showFilters = false;
+	let showErrors = false;
+	let showValidMatches = false;
 
 	// Import results
 	let importResult: any = null;
@@ -65,9 +76,24 @@
 				duplicates = data.duplicates || [];
 				uniqueLocations = data.unique_locations || [];
 
-				// Separate valid and error rows
-				validRows = rows.filter((r) => !r.error);
+				// Collect row numbers involved in duplicate groups
+				const duplicateRowNumbers = new Set<number>();
+				duplicates.forEach((group: any) => {
+					(group.matches || []).forEach((m: any) => duplicateRowNumbers.add(m.row_number));
+				});
+
+				// Separate valid, error, and duplicate rows
+				validRows = rows.filter((r) => !r.error && !duplicateRowNumbers.has(r.row_number));
 				errorRows = rows.filter((r) => r.error);
+
+				// Initialize duplicate selections: first row in each group selected by default
+				duplicateSelections = {};
+				duplicates.forEach((group: any, i: number) => {
+					const matches = group.matches || [];
+					if (matches.length > 0) {
+						duplicateSelections[i] = new Set([matches[0].row_number]);
+					}
+				});
 
 				step = 'preview';
 			} else {
@@ -93,12 +119,13 @@
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({
-					rows: validRows,
-					resolutions: {}, // TODO: Story 3.2 will handle duplicate resolution
+					rows: rowsToImport,
+					resolutions: {},
 					filters: {
 						filter_practices: filterPractices,
 						filter_away: filterAway,
-						home_locations: homeLocations
+						home_locations: homeLocations,
+						custom_exclude_terms: customExcludeTerms
 					}
 				})
 			});
@@ -117,6 +144,34 @@
 		}
 	}
 
+	function toggleDuplicateSelection(groupIndex: number, rowNumber: number) {
+		const current = duplicateSelections[groupIndex] || new Set();
+		if (current.has(rowNumber)) {
+			current.delete(rowNumber);
+		} else {
+			current.add(rowNumber);
+		}
+		duplicateSelections[groupIndex] = new Set(current);
+		duplicateSelections = { ...duplicateSelections };
+	}
+
+	// Rows selected from duplicate groups to include in import
+	$: resolvedDuplicateRows = (() => {
+		const resolved: any[] = [];
+		duplicates.forEach((group: any, i: number) => {
+			const selected = duplicateSelections[i] || new Set();
+			(group.matches || []).forEach((m: any) => {
+				if (selected.has(m.row_number)) {
+					resolved.push(m);
+				}
+			});
+		});
+		return resolved;
+	})();
+
+	// All rows that will be sent to the confirm endpoint
+	$: rowsToImport = [...validRows, ...resolvedDuplicateRows];
+
 	function handleStartOver() {
 		step = 'upload';
 		file = null;
@@ -125,9 +180,15 @@
 		validRows = [];
 		errorRows = [];
 		uniqueLocations = [];
+		duplicateSelections = {};
+		showDuplicates = false;
+		showFilters = false;
+		showErrors = false;
+		showValidMatches = false;
 		filterPractices = false;
 		filterAway = false;
 		homeLocations = [];
+		customExcludeText = '';
 		importResult = null;
 		error = '';
 	}
@@ -149,18 +210,30 @@
 		homeLocations = [];
 	}
 
+	// Parse comma-separated custom exclude terms
+	$: customExcludeTerms = customExcludeText
+		.split(',')
+		.map((t) => t.trim())
+		.filter((t) => t.length > 0);
+
 	// Computed values for preview
 	$: filteredCount = (() => {
-		if (!filterPractices && !filterAway) return 0;
+		if (!filterPractices && !filterAway && customExcludeTerms.length === 0) return 0;
 
 		let count = 0;
-		validRows.forEach((row) => {
-			// Check practice filter
-			if (filterPractices && row.team_name?.toLowerCase().includes('practice')) {
+		rowsToImport.forEach((row) => {
+			const eventLower = (row.event_name || '').toLowerCase();
+			if (filterPractices && (eventLower.includes('practice') || eventLower.includes('training'))) {
 				count++;
 				return;
 			}
-			// Check away match filter
+			if (customExcludeTerms.length > 0) {
+				const matched = customExcludeTerms.some((term) => eventLower.includes(term.toLowerCase()));
+				if (matched) {
+					count++;
+					return;
+				}
+			}
 			if (filterAway && homeLocations.length > 0) {
 				const isHome = homeLocations.some((loc) => row.location?.includes(loc));
 				if (!isHome) count++;
@@ -169,7 +242,25 @@
 		return count;
 	})();
 
-	$: willImportCount = validRows.length - filteredCount;
+	$: willImportCount = rowsToImport.length - filteredCount;
+
+	// Rows that will actually be imported (respects all filters)
+	$: displayRows = rowsToImport.filter((row) => {
+		const eventLower = (row.event_name || '').toLowerCase();
+		if (filterPractices && (eventLower.includes('practice') || eventLower.includes('training'))) {
+			return false;
+		}
+		if (customExcludeTerms.length > 0) {
+			if (customExcludeTerms.some((term) => eventLower.includes(term.toLowerCase()))) {
+				return false;
+			}
+		}
+		if (filterAway && homeLocations.length > 0) {
+			const isHome = homeLocations.some((loc) => row.location?.includes(loc));
+			if (!isHome) return false;
+		}
+		return true;
+	});
 </script>
 
 <svelte:head>
@@ -222,24 +313,85 @@
 		<div class="card">
 			<h2>Import Preview</h2>
 			<p class="summary">
-				<strong>{validRows.length}</strong> matches ready to import •
-				<strong class="error-count">{errorRows.length}</strong> rows with errors •
-				<strong class="duplicate-count">{duplicates.length}</strong> duplicate groups
+				<strong>{validRows.length}</strong> unique matches •
+				<strong class="error-count">{errorRows.length}</strong> rows with errors
+				{#if duplicates.length > 0}
+					• <strong class="duplicate-count">{duplicates.length}</strong> duplicate group{duplicates.length > 1 ? 's' : ''} ({resolvedDuplicateRows.length} selected to keep)
+				{/if}
 			</p>
 
 			{#if duplicates.length > 0}
-				<div class="alert alert-warning">
-					<strong>⚠️ Duplicates detected</strong>
-					<p>
-						{duplicates.length} duplicate match group(s) found. Duplicate resolution will be implemented
-						in Story 3.2. For now, all rows will be imported (duplicates included).
+				<div class="section duplicate-section">
+					<button class="section-toggle" on:click={() => (showDuplicates = !showDuplicates)}>
+						<span class="toggle-icon">{showDuplicates ? '▾' : '▸'}</span>
+						<h3>Duplicates Detected ({duplicates.length} group{duplicates.length > 1 ? 's' : ''})</h3>
+					</button>
+					{#if showDuplicates}
+					<p class="section-info">
+						The following rows appear to be duplicates. Select which row(s) to keep from each group.
+						Unselected rows will be skipped.
 					</p>
+
+					{#each duplicates as group, groupIndex}
+						<div class="duplicate-group">
+							<div class="duplicate-group-header">
+								{#if group.signal === 'reference_id'}
+									<strong>Same Reference ID: {group.matches[0]?.reference_id}</strong>
+								{:else if group.signal === 'same_event'}
+									<strong>Same event, age group, location, date and time</strong>
+								{:else}
+									<strong>Same match (team, date, time) with different reference IDs</strong>
+								{/if}
+							</div>
+							<div class="table-container">
+								<table class="preview-table">
+									<thead>
+										<tr>
+											<th>Keep</th>
+											<th>Row</th>
+											<th>Event</th>
+											<th>Team</th>
+											<th>Date</th>
+											<th>Time</th>
+											<th>Location</th>
+											<th>Ref ID</th>
+										</tr>
+									</thead>
+									<tbody>
+										{#each group.matches as match}
+											<tr class:duplicate-selected={duplicateSelections[groupIndex]?.has(match.row_number)}>
+												<td>
+													<input
+														type="checkbox"
+														checked={duplicateSelections[groupIndex]?.has(match.row_number)}
+														on:change={() => toggleDuplicateSelection(groupIndex, match.row_number)}
+													/>
+												</td>
+												<td>{match.row_number}</td>
+												<td>{match.event_name}</td>
+												<td>{match.team_name}</td>
+												<td>{match.start_date}</td>
+												<td>{match.start_time} - {match.end_time}</td>
+												<td>{match.location}</td>
+												<td>{match.reference_id || '—'}</td>
+											</tr>
+										{/each}
+									</tbody>
+								</table>
+							</div>
+						</div>
+					{/each}
+					{/if}
 				</div>
 			{/if}
 
 			<!-- Filter Options (Story 6.4) -->
 			<div class="section filter-section">
-				<h3>🔍 Filter Options</h3>
+				<button class="section-toggle" on:click={() => (showFilters = !showFilters)}>
+					<span class="toggle-icon">{showFilters ? '▾' : '▸'}</span>
+					<h3>Filter Options{filteredCount > 0 ? ` (${filteredCount} filtered)` : ''}</h3>
+				</button>
+				{#if showFilters}
 				<p class="section-info">
 					Optionally filter out practice matches and away matches before importing.
 				</p>
@@ -249,12 +401,36 @@
 					<label class="filter-checkbox">
 						<input type="checkbox" bind:checked={filterPractices} />
 						<span class="filter-label">
-							<strong>Filter Practice Matches</strong>
+							<strong>Filter Practices & Training</strong>
 							<span class="filter-description"
-								>Skip matches with "Practice" in the team name</span
+								>Skip matches with "Practice" or "Training" in the event name</span
 							>
 						</span>
 					</label>
+
+					<!-- Custom Exclude Terms -->
+					<div class="custom-exclude-panel">
+						<label for="customExclude">
+							<strong>Custom Exclude Terms</strong>
+							<span class="filter-description"
+								>Comma-separated terms to match against event name (e.g. "Mini, Scrimmage")</span
+							>
+						</label>
+						<input
+							type="text"
+							id="customExclude"
+							bind:value={customExcludeText}
+							placeholder="e.g. Mini, Scrimmage, Friendly"
+							class="text-input"
+						/>
+						{#if customExcludeTerms.length > 0}
+							<div class="exclude-tags">
+								{#each customExcludeTerms as term}
+									<span class="exclude-tag">{term}</span>
+								{/each}
+							</div>
+						{/if}
+					</div>
 
 					<!-- Away Match Filter -->
 					<label class="filter-checkbox">
@@ -313,7 +489,7 @@
 					{/if}
 
 					<!-- Filter Preview -->
-					{#if filterPractices || (filterAway && homeLocations.length > 0)}
+					{#if filterPractices || customExcludeTerms.length > 0 || (filterAway && homeLocations.length > 0)}
 						<div class="filter-preview">
 							<strong>Filter Preview:</strong>
 							<div class="filter-stats">
@@ -327,11 +503,16 @@
 						</div>
 					{/if}
 				</div>
+				{/if}
 			</div>
 
 			{#if errorRows.length > 0}
 				<div class="section">
-					<h3>Rows with Errors ({errorRows.length})</h3>
+					<button class="section-toggle" on:click={() => (showErrors = !showErrors)}>
+						<span class="toggle-icon">{showErrors ? '▾' : '▸'}</span>
+						<h3>Rows with Errors ({errorRows.length})</h3>
+					</button>
+					{#if showErrors}
 					<p class="section-info">These rows will be skipped:</p>
 					<div class="table-container">
 						<table class="preview-table">
@@ -365,16 +546,22 @@
 							</tbody>
 						</table>
 					</div>
+					{/if}
 				</div>
 			{/if}
 
 			<div class="section">
-				<h3>Valid Matches ({validRows.length})</h3>
+				<button class="section-toggle" on:click={() => (showValidMatches = !showValidMatches)}>
+					<span class="toggle-icon">{showValidMatches ? '▾' : '▸'}</span>
+					<h3>Matches to Import ({displayRows.length})</h3>
+				</button>
+				{#if showValidMatches}
 				<div class="table-container">
 					<table class="preview-table">
 						<thead>
 							<tr>
 								<th>Row</th>
+								<th>Status</th>
 								<th>Event Name</th>
 								<th>Team</th>
 								<th>Age Group</th>
@@ -384,9 +571,16 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each validRows as row}
+							{#each displayRows as row}
 								<tr>
 									<td>{row.row_number}</td>
+									<td>
+										{#if row.exists_in_db}
+											<span class="badge badge-update">Update</span>
+										{:else}
+											<span class="badge badge-new">New</span>
+										{/if}
+									</td>
 									<td>{row.event_name}</td>
 									<td>{row.team_name}</td>
 									<td>{row.age_group || '—'}</td>
@@ -398,6 +592,7 @@
 						</tbody>
 					</table>
 				</div>
+				{/if}
 			</div>
 
 			<div class="actions">
@@ -405,14 +600,14 @@
 				<button
 					on:click={handleConfirmImport}
 					class="btn btn-primary"
-					disabled={importing || validRows.length === 0 || (filterAway && homeLocations.length === 0)}
+					disabled={importing || rowsToImport.length === 0 || (filterAway && homeLocations.length === 0)}
 				>
 					{#if importing}
 						Importing...
 					{:else if filteredCount > 0}
 						Import {willImportCount} Matches (Filter {filteredCount})
 					{:else}
-						Import {validRows.length} Matches
+						Import {rowsToImport.length} Matches
 					{/if}
 				</button>
 			</div>
@@ -577,6 +772,32 @@
 		margin-bottom: 2rem;
 	}
 
+	.section-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		background: none;
+		border: none;
+		cursor: pointer;
+		padding: 0;
+		width: 100%;
+		text-align: left;
+	}
+
+	.section-toggle:hover {
+		opacity: 0.8;
+	}
+
+	.section-toggle h3 {
+		margin-bottom: 0;
+	}
+
+	.toggle-icon {
+		font-size: 1rem;
+		color: var(--text-secondary);
+		flex-shrink: 0;
+	}
+
 	.section-info {
 		color: var(--text-secondary);
 		margin-bottom: 1rem;
@@ -628,6 +849,26 @@
 	.text-muted {
 		color: var(--text-secondary);
 		font-style: italic;
+	}
+
+	.badge {
+		display: inline-block;
+		padding: 0.125rem 0.5rem;
+		border-radius: 1rem;
+		font-size: 0.75rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.025em;
+	}
+
+	.badge-new {
+		background-color: #dcfce7;
+		color: #166534;
+	}
+
+	.badge-update {
+		background-color: #dbeafe;
+		color: #1e40af;
 	}
 
 	.actions {
@@ -700,6 +941,40 @@
 		background-color: var(--bg-secondary);
 	}
 
+	/* Duplicate Resolution Styles */
+	.duplicate-section {
+		background-color: #fffbeb;
+		padding: 1.5rem;
+		border-radius: 0.5rem;
+		border: 1px solid #fbbf24;
+	}
+
+	.duplicate-group {
+		background-color: white;
+		border: 1px solid var(--border-color);
+		border-radius: 0.375rem;
+		margin-bottom: 1rem;
+		overflow: hidden;
+	}
+
+	.duplicate-group-header {
+		padding: 0.75rem 1rem;
+		background-color: #fef3c7;
+		border-bottom: 1px solid #fbbf24;
+		color: #92400e;
+		font-size: 0.875rem;
+	}
+
+	.duplicate-selected {
+		background-color: #f0fdf4;
+	}
+
+	.duplicate-group .preview-table td input[type='checkbox'] {
+		width: 1.125rem;
+		height: 1.125rem;
+		cursor: pointer;
+	}
+
 	/* Filter Options Styles */
 	.filter-section {
 		background-color: var(--bg-secondary);
@@ -749,6 +1024,54 @@
 		color: var(--text-secondary);
 		font-size: 0.875rem;
 		font-weight: normal;
+	}
+
+	.custom-exclude-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 1rem;
+		background-color: white;
+		border-radius: 0.375rem;
+		border: 1px solid var(--border-color);
+	}
+
+	.custom-exclude-panel label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.text-input {
+		padding: 0.5rem 0.75rem;
+		border: 1px solid var(--border-color);
+		border-radius: 0.375rem;
+		font-size: 0.875rem;
+		width: 100%;
+		box-sizing: border-box;
+	}
+
+	.text-input:focus {
+		outline: none;
+		border-color: var(--primary-color);
+		box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+	}
+
+	.exclude-tags {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.exclude-tag {
+		display: inline-block;
+		padding: 0.25rem 0.625rem;
+		background-color: #fef3c7;
+		border: 1px solid #fbbf24;
+		border-radius: 1rem;
+		font-size: 0.75rem;
+		color: #92400e;
+		font-weight: 500;
 	}
 
 	.home-locations-panel {

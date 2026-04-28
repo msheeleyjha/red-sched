@@ -6,14 +6,20 @@
 
 	let loading = true;
 	let matches: any[] = [];
-	let filteredMatches: any[] = [];
 	let error = '';
+
+	// Pagination
+	let currentPage = 1;
+	let perPage = 25;
+	let totalMatches = 0;
+	let totalPages = 0;
 
 	// Filters
 	let ageGroupFilter = 'all';
 	let assignmentStatusFilter = 'all';
 	let showCancelled = false;
-	let dateFilter = '';
+	let dateFrom = '';
+	let dateTo = '';
 
 	// Edit modal state
 	let editingMatch: any = null;
@@ -47,13 +53,25 @@
 		error = '';
 
 		try {
-			const response = await fetch(`${API_URL}/api/matches`, {
+			const params = new URLSearchParams();
+			params.set('page', currentPage.toString());
+			params.set('per_page', perPage.toString());
+			if (dateFrom) params.set('date_from', dateFrom);
+			if (dateTo) params.set('date_to', dateTo);
+			if (ageGroupFilter !== 'all') params.set('age_group', ageGroupFilter);
+			if (assignmentStatusFilter !== 'all') params.set('assignment_status', assignmentStatusFilter);
+			if (showCancelled) params.set('show_cancelled', 'true');
+
+			const response = await fetch(`${API_URL}/api/matches?${params.toString()}`, {
 				credentials: 'include'
 			});
 
 			if (response.ok) {
-				matches = await response.json();
-				filterMatches();
+				const data = await response.json();
+				matches = data.matches || [];
+				totalMatches = data.total;
+				totalPages = data.total_pages;
+				currentPage = data.page;
 			} else {
 				error = 'Failed to load matches';
 			}
@@ -64,37 +82,29 @@
 		}
 	}
 
-	function filterMatches() {
-		let filtered = matches;
+	function applyFilters() {
+		currentPage = 1;
+		loadMatches();
+	}
 
-		// Filter by cancelled status
-		if (!showCancelled) {
-			filtered = filtered.filter((m) => m.status !== 'cancelled');
-		}
+	function clearFilters() {
+		ageGroupFilter = 'all';
+		assignmentStatusFilter = 'all';
+		showCancelled = false;
+		dateFrom = '';
+		dateTo = '';
+		currentPage = 1;
+		loadMatches();
+	}
 
-		// Filter by age group
-		if (ageGroupFilter !== 'all') {
-			filtered = filtered.filter((m) => m.age_group === ageGroupFilter);
-		}
-
-		// Filter by assignment status
-		if (assignmentStatusFilter !== 'all') {
-			filtered = filtered.filter((m) => m.assignment_status === assignmentStatusFilter);
-		}
-
-		// Filter by date
-		if (dateFilter) {
-			filtered = filtered.filter((m) => {
-				const matchDate = m.match_date.split('T')[0];
-				return matchDate === dateFilter;
-			});
-		}
-
-		filteredMatches = filtered;
+	function goToPage(page: number) {
+		if (page < 1 || page > totalPages) return;
+		currentPage = page;
+		loadMatches();
 	}
 
 	function getStatusBadge(status: string) {
-		const badges = {
+		const badges: Record<string, { class: string; text: string }> = {
 			unassigned: { class: 'badge-error', text: 'Unassigned' },
 			partial: { class: 'badge-warning', text: 'Partial' },
 			full: { class: 'badge-success', text: 'Full' }
@@ -389,6 +399,11 @@
 		return false;
 	}
 
+	function sortRoles(roles: any[]): any[] {
+		const order: Record<string, number> = { center: 1, assistant_1: 2, assistant_2: 3 };
+		return [...roles].sort((a, b) => (order[a.role_type] || 99) - (order[b.role_type] || 99));
+	}
+
 	function getRoleName(roleType: string): string {
 		const names: Record<string, string> = {
 			center: 'Center Referee',
@@ -423,16 +438,7 @@
 		return (order[a.role_type] || 99) - (order[b.role_type] || 99);
 	}) : [];
 
-	// Get unique age groups for filter
-	$: uniqueAgeGroups = [...new Set(matches.map((m) => m.age_group).filter(Boolean))].sort();
-
-	$: {
-		ageGroupFilter;
-		assignmentStatusFilter;
-		showCancelled;
-		dateFilter;
-		filterMatches();
-	}
+	const ageGroups = ['U6', 'U8', 'U10', 'U12', 'U14', 'U16', 'U18'];
 </script>
 
 <svelte:head>
@@ -460,45 +466,68 @@
 	{/if}
 
 	<div class="filters card">
-		<div class="filter-group">
-			<label for="ageGroup">Age Group</label>
-			<select id="ageGroup" bind:value={ageGroupFilter}>
-				<option value="all">All Age Groups</option>
-				{#each uniqueAgeGroups as ageGroup}
-					<option value={ageGroup}>{ageGroup}</option>
-				{/each}
-			</select>
+		<div class="filters-row">
+			<div class="filter-group">
+				<label for="ageGroup">Age Group</label>
+				<select id="ageGroup" bind:value={ageGroupFilter}>
+					<option value="all">All Age Groups</option>
+					{#each ageGroups as ag}
+						<option value={ag}>{ag}</option>
+					{/each}
+				</select>
+			</div>
+
+			<div class="filter-group">
+				<label for="status">Assignment Status</label>
+				<select id="status" bind:value={assignmentStatusFilter}>
+					<option value="all">All Statuses</option>
+					<option value="unassigned">Unassigned</option>
+					<option value="partial">Partial</option>
+					<option value="full">Full</option>
+				</select>
+			</div>
+
+			<div class="filter-group">
+				<label for="dateFrom">From Date</label>
+				<input
+					type="date"
+					id="dateFrom"
+					bind:value={dateFrom}
+				/>
+			</div>
+
+			<div class="filter-group">
+				<label for="dateTo">To Date</label>
+				<input
+					type="date"
+					id="dateTo"
+					bind:value={dateTo}
+				/>
+			</div>
+
+			<div class="filter-group checkbox-filter">
+				<label class="checkbox-label">
+					<input type="checkbox" bind:checked={showCancelled} />
+					<span>Show cancelled</span>
+				</label>
+			</div>
 		</div>
 
-		<div class="filter-group">
-			<label for="status">Assignment Status</label>
-			<select id="status" bind:value={assignmentStatusFilter}>
-				<option value="all">All Statuses</option>
-				<option value="unassigned">Unassigned</option>
-				<option value="partial">Partial</option>
-				<option value="full">Full</option>
-			</select>
-		</div>
-
-		<div class="filter-group">
-			<label for="dateFilter">Match Date</label>
-			<input
-				type="date"
-				id="dateFilter"
-				bind:value={dateFilter}
-				placeholder="Filter by date"
-			/>
-		</div>
-
-		<div class="filter-group checkbox-filter">
-			<label class="checkbox-label">
-				<input type="checkbox" bind:checked={showCancelled} />
-				<span>Show cancelled</span>
-			</label>
-		</div>
-
-		<div class="stats">
-			<strong>{filteredMatches.length}</strong> match{filteredMatches.length !== 1 ? 'es' : ''} shown
+		<div class="filters-footer">
+			<div class="stats">
+				<strong>{totalMatches}</strong> match{totalMatches !== 1 ? 'es' : ''} found
+				{#if totalPages > 1}
+					<span class="page-info">  (page {currentPage} of {totalPages})</span>
+				{/if}
+			</div>
+			<div class="filter-actions">
+				<button class="btn-small btn-primary" on:click={applyFilters}>
+					Apply Filters
+				</button>
+				<button class="btn-small btn-secondary" on:click={clearFilters}>
+					Clear Filters
+				</button>
+			</div>
 		</div>
 	</div>
 
@@ -506,20 +535,22 @@
 		<div class="card">
 			<p>Loading matches...</p>
 		</div>
-	{:else if filteredMatches.length === 0}
+	{:else if matches.length === 0}
 		<div class="card">
-			<p>No matches found. {matches.length === 0 ? 'Import a CSV file to get started.' : 'Try adjusting your filters.'}</p>
-			{#if matches.length === 0}
+			{#if totalMatches === 0 && !dateFrom && !dateTo && ageGroupFilter === 'all' && assignmentStatusFilter === 'all'}
+				<p>No matches found. Import a CSV file to get started.</p>
 				<div class="empty-actions">
 					<button on:click={() => goto('/assignor/matches/import')} class="btn btn-primary">
 						Import Match Schedule
 					</button>
 				</div>
+			{:else}
+				<p>No matches found matching your filters. Try adjusting your filters or click Clear Filters.</p>
 			{/if}
 		</div>
 	{:else}
 		<div class="matches-grid">
-			{#each filteredMatches as match}
+			{#each matches as match}
 				<div class="match-card card" class:cancelled={match.status === 'cancelled'}>
 					<div class="match-header">
 						<div class="match-date-time">
@@ -560,10 +591,7 @@
 					</div>
 
 					{#if match.roles && match.roles.length > 0}
-						{@const sortedMatchRoles = [...match.roles].sort((a, b) => {
-							const order = { center: 1, assistant_1: 2, assistant_2: 3 };
-							return (order[a.role_type] || 99) - (order[b.role_type] || 99);
-						})}
+						{@const sortedMatchRoles = sortRoles(match.roles)}
 						<div class="roles">
 							<div class="roles-label">Assignments:</div>
 							<div class="roles-list">
@@ -614,6 +642,42 @@
 				</div>
 			{/each}
 		</div>
+
+		{#if totalPages > 1}
+			<div class="pagination">
+				<button
+					class="btn-small btn-secondary"
+					on:click={() => goToPage(currentPage - 1)}
+					disabled={currentPage <= 1}
+				>
+					Previous
+				</button>
+
+				<div class="page-numbers">
+					{#each Array.from({ length: totalPages }, (_, i) => i + 1) as page}
+						{#if page === 1 || page === totalPages || (page >= currentPage - 2 && page <= currentPage + 2)}
+							<button
+								class="page-btn"
+								class:active={page === currentPage}
+								on:click={() => goToPage(page)}
+							>
+								{page}
+							</button>
+						{:else if page === currentPage - 3 || page === currentPage + 3}
+							<span class="page-ellipsis">...</span>
+						{/if}
+					{/each}
+				</div>
+
+				<button
+					class="btn-small btn-secondary"
+					on:click={() => goToPage(currentPage + 1)}
+					disabled={currentPage >= totalPages}
+				>
+					Next
+				</button>
+			</div>
+		{/if}
 	{/if}
 </div>
 
@@ -994,16 +1058,37 @@
 	}
 
 	.filters {
+		margin-bottom: 1.5rem;
+	}
+
+	.filters-row {
 		display: flex;
 		gap: 1.5rem;
 		align-items: flex-end;
 		flex-wrap: wrap;
-		margin-bottom: 1.5rem;
+	}
+
+	.filters-footer {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-top: 1rem;
+		padding-top: 0.75rem;
+		border-top: 1px solid var(--border-color);
+	}
+
+	.filter-actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.page-info {
+		color: var(--text-secondary);
 	}
 
 	.filter-group {
 		flex: 1;
-		min-width: 200px;
+		min-width: 150px;
 	}
 
 	.filter-group label {
@@ -1305,6 +1390,51 @@
 
 	.empty-actions {
 		margin-top: 1rem;
+	}
+
+	.pagination {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 1.5rem;
+		padding: 1rem 0;
+	}
+
+	.page-numbers {
+		display: flex;
+		gap: 0.25rem;
+		align-items: center;
+	}
+
+	.page-btn {
+		min-width: 2.25rem;
+		height: 2.25rem;
+		padding: 0 0.5rem;
+		border: 1px solid var(--border-color);
+		border-radius: 0.375rem;
+		background: white;
+		cursor: pointer;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--text-primary);
+		transition: all 0.2s;
+	}
+
+	.page-btn:hover {
+		background-color: var(--bg-secondary);
+		border-color: var(--primary-color);
+	}
+
+	.page-btn.active {
+		background-color: var(--primary-color);
+		color: white;
+		border-color: var(--primary-color);
+	}
+
+	.page-ellipsis {
+		padding: 0 0.25rem;
+		color: var(--text-secondary);
 	}
 
 	@media (max-width: 768px) {

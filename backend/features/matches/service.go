@@ -10,9 +10,20 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/msheeley/referee-scheduler/shared/errors"
 )
+
+// stripEmojis removes emoji and symbol characters from a string
+func stripEmojis(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.Is(unicode.So, r) || unicode.Is(unicode.Sk, r) {
+			return -1
+		}
+		return r
+	}, s)
+}
 
 // Service handles match business logic
 type Service struct {
@@ -43,8 +54,20 @@ func extractAgeGroup(teamName string) *string {
 	return nil
 }
 
+// extractGender extracts gender from team name
+// Pattern: "Under {N} {Gender}" or "Under {N} {Gender} - {Team}"
+// Examples: "Under 12 Girls - Falcons" → "girls", "Under 6 Boys" → "boys"
+func extractGender(teamName string) string {
+	re := regexp.MustCompile(`(?i)under\s+\d+\s+(boys|girls)`)
+	matches := re.FindStringSubmatch(teamName)
+	if len(matches) > 1 {
+		return strings.ToLower(matches[1])
+	}
+	return ""
+}
+
 // ParseCSV parses an uploaded CSV file and returns preview with errors
-func (s *Service) ParseCSV(file multipart.File, filename string) (*ImportPreviewResponse, error) {
+func (s *Service) ParseCSV(ctx context.Context, file multipart.File, filename string) (*ImportPreviewResponse, error) {
 	// Validate file extension
 	if !strings.HasSuffix(strings.ToLower(filename), ".csv") {
 		return nil, errors.NewBadRequest("Only .csv files are accepted")
@@ -103,7 +126,7 @@ func (s *Service) ParseCSV(file multipart.File, filename string) (*ImportPreview
 			return ""
 		}
 
-		row.EventName = getCol("event_name")
+		row.EventName = strings.TrimSpace(stripEmojis(getCol("event_name")))
 		row.TeamName = getCol("team_name")
 		row.StartDate = getCol("start_date")
 		row.EndDate = getCol("end_date")
@@ -132,50 +155,21 @@ func (s *Service) ParseCSV(file multipart.File, filename string) (*ImportPreview
 		rows = append(rows, row)
 	}
 
+	// Check each row's reference_id against the database
+	for i := range rows {
+		if rows[i].ReferenceID != "" && rows[i].Error == nil {
+			existing, err := s.repo.FindByReferenceID(ctx, rows[i].ReferenceID)
+			if err == nil && existing != nil {
+				rows[i].ExistsInDB = true
+			}
+		}
+	}
+
 	// Check for duplicates
 	duplicates := s.detectDuplicates(rows)
 
-	// Story 6.1: Reject file if duplicate reference_ids found
-	// Story 6.3: Reject file if same-match duplicates found
-	if len(duplicates) > 0 {
-		errorMessages := make([]string, 0)
-
-		// Check for duplicate reference_ids
-		duplicateRefIDs := make([]string, 0)
-		for _, dup := range duplicates {
-			if dup.Signal == "reference_id" && len(dup.Matches) > 0 {
-				// Get the reference_id from the first match in the group
-				refID := dup.Matches[0].ReferenceID
-				if refID != "" {
-					duplicateRefIDs = append(duplicateRefIDs, refID)
-				}
-			}
-		}
-
-		if len(duplicateRefIDs) > 0 {
-			errorMessages = append(errorMessages,
-				fmt.Sprintf("Duplicate reference_id values: %s", strings.Join(duplicateRefIDs, ", ")))
-		}
-
-		// Check for same-match duplicates
-		sameMatchCount := 0
-		for _, dup := range duplicates {
-			if dup.Signal == "same_match" {
-				sameMatchCount++
-			}
-		}
-
-		if sameMatchCount > 0 {
-			errorMessages = append(errorMessages,
-				fmt.Sprintf("%d duplicate match(es) detected (same team, date, and time with different reference_ids)", sameMatchCount))
-		}
-
-		if len(errorMessages) > 0 {
-			errMsg := fmt.Sprintf("CSV file contains duplicates: %s. Please remove duplicates and re-upload.",
-				strings.Join(errorMessages, "; "))
-			return nil, errors.NewBadRequest(errMsg)
-		}
-	}
+	// Duplicates are included in the preview response for the user to resolve.
+	// The frontend shows duplicate groups and lets the user choose which rows to keep.
 
 	// Extract unique locations for filter configuration UI
 	locationMap := make(map[string]bool)
@@ -259,6 +253,43 @@ func (s *Service) detectDuplicates(rows []CSVRow) []DuplicateMatchGroup {
 		}
 	}
 
+	// Signal C: Same event_name + age_group + gender + location + date + start_time
+	// Catches potential duplicates across different teams at the same event/venue/time
+	// Gender is included so "Under 6 Boys" and "Under 6 Girls" at the same event are not flagged
+	eventKey := func(row CSVRow) string {
+		ag := ""
+		if row.AgeGroup != nil {
+			ag = *row.AgeGroup
+		}
+		gender := extractGender(row.TeamName)
+		return fmt.Sprintf("%s|%s|%s|%s|%s|%s", row.EventName, ag, gender, row.Location, row.StartDate, row.StartTime)
+	}
+
+	// Collect row numbers already flagged by Signal A or B to avoid double-flagging
+	alreadyFlagged := make(map[int]bool)
+	for _, dup := range duplicates {
+		for _, m := range dup.Matches {
+			alreadyFlagged[m.RowNumber] = true
+		}
+	}
+
+	eventMap := make(map[string][]CSVRow)
+	for _, row := range rows {
+		if row.Error == nil && !alreadyFlagged[row.RowNumber] {
+			key := eventKey(row)
+			eventMap[key] = append(eventMap[key], row)
+		}
+	}
+
+	for _, matches := range eventMap {
+		if len(matches) > 1 {
+			duplicates = append(duplicates, DuplicateMatchGroup{
+				Signal:  "same_event",
+				Matches: matches,
+			})
+		}
+	}
+
 	return duplicates
 }
 
@@ -274,16 +305,25 @@ func (s *Service) applyFilters(rows []CSVRow, filters *ImportFilters) []CSVRow {
 			continue
 		}
 
-		// Filter 1: Practice matches
+		// Filter 1: Practice/training matches (checked against event_name)
 		if filters.FilterPractices {
-			if s.isPracticeMatch(rows[i].TeamName) {
-				reason := "Practice match"
+			if s.isPracticeMatch(rows[i].EventName) {
+				reason := "Practice/training match"
 				rows[i].FilterReason = &reason
 				continue
 			}
 		}
 
-		// Filter 2: Away matches
+		// Filter 2: Custom exclude terms (checked against event_name)
+		if len(filters.CustomExcludeTerms) > 0 {
+			if s.matchesCustomExcludeTerm(rows[i].EventName, filters.CustomExcludeTerms) {
+				reason := "Matched custom exclude term"
+				rows[i].FilterReason = &reason
+				continue
+			}
+		}
+
+		// Filter 3: Away matches
 		if filters.FilterAway {
 			if s.isAwayMatch(rows[i].Location, filters.HomeLocations) {
 				reason := "Away match"
@@ -296,9 +336,22 @@ func (s *Service) applyFilters(rows []CSVRow, filters *ImportFilters) []CSVRow {
 	return rows
 }
 
-// isPracticeMatch checks if team name indicates a practice match
-func (s *Service) isPracticeMatch(teamName string) bool {
-	return strings.Contains(strings.ToLower(teamName), "practice")
+// isPracticeMatch checks if event name indicates a practice or training session
+func (s *Service) isPracticeMatch(eventName string) bool {
+	lower := strings.ToLower(eventName)
+	return strings.Contains(lower, "practice") || strings.Contains(lower, "training")
+}
+
+// matchesCustomExcludeTerm checks if event name contains any user-supplied exclude term
+func (s *Service) matchesCustomExcludeTerm(eventName string, terms []string) bool {
+	lower := strings.ToLower(eventName)
+	for _, term := range terms {
+		trimmed := strings.TrimSpace(term)
+		if trimmed != "" && strings.Contains(lower, strings.ToLower(trimmed)) {
+			return true
+		}
+	}
+	return false
 }
 
 // isAwayMatch checks if location indicates an away match
@@ -582,23 +635,42 @@ func (s *Service) CreateRoleSlotsForMatch(ctx context.Context, matchID int64, ag
 	return nil
 }
 
-// ListMatches returns all active (non-archived) matches with role assignments
+// ListMatches returns paginated active (non-archived) matches with role assignments
 // This is the default view for assignors scheduling matches
-func (s *Service) ListMatches(ctx context.Context) ([]MatchWithRoles, error) {
-	matches, err := s.repo.ListActive(ctx)
+func (s *Service) ListMatches(ctx context.Context, params *MatchListParams) (*PaginatedMatchesResponse, error) {
+	if params == nil {
+		params = &MatchListParams{Page: 1, PerPage: 25}
+	}
+	if params.Page < 1 {
+		params.Page = 1
+	}
+	if params.PerPage < 1 {
+		params.PerPage = 25
+	}
+	if params.PerPage > 100 {
+		params.PerPage = 100
+	}
+
+	repoParams := &MatchListParams{
+		DateFrom:      params.DateFrom,
+		DateTo:        params.DateTo,
+		AgeGroup:      params.AgeGroup,
+		ShowCancelled: params.ShowCancelled,
+	}
+
+	matches, err := s.repo.ListActive(ctx, repoParams)
 	if err != nil {
 		return nil, errors.NewInternal("Failed to fetch matches", err)
 	}
 
-	result := []MatchWithRoles{}
+	enriched := []MatchWithRoles{}
 	for _, match := range matches {
 		roles, status, hasOverdueAck, err := s.getMatchRolesAndStatus(ctx, match.ID, match.AgeGroup)
 		if err != nil {
-			// Log error but continue
 			continue
 		}
 
-		result = append(result, MatchWithRoles{
+		enriched = append(enriched, MatchWithRoles{
 			Match:            match,
 			Roles:            roles,
 			AssignmentStatus: status,
@@ -606,7 +678,38 @@ func (s *Service) ListMatches(ctx context.Context) ([]MatchWithRoles, error) {
 		})
 	}
 
-	return result, nil
+	if params.AssignmentStatus != "" {
+		filtered := []MatchWithRoles{}
+		for _, m := range enriched {
+			if m.AssignmentStatus == params.AssignmentStatus {
+				filtered = append(filtered, m)
+			}
+		}
+		enriched = filtered
+	}
+
+	total := len(enriched)
+	totalPages := total / params.PerPage
+	if total%params.PerPage > 0 {
+		totalPages++
+	}
+
+	start := (params.Page - 1) * params.PerPage
+	if start > total {
+		start = total
+	}
+	end := start + params.PerPage
+	if end > total {
+		end = total
+	}
+
+	return &PaginatedMatchesResponse{
+		Matches:    enriched[start:end],
+		Total:      total,
+		Page:       params.Page,
+		PerPage:    params.PerPage,
+		TotalPages: totalPages,
+	}, nil
 }
 
 // getMatchRolesAndStatus fetches roles and determines assignment status
@@ -897,7 +1000,7 @@ func (s *Service) AddRoleSlot(ctx context.Context, matchID int64, roleType strin
 
 // ListActiveMatches retrieves all non-archived matches with their role assignments
 func (s *Service) ListActiveMatches(ctx context.Context) ([]MatchWithRoles, error) {
-	matches, err := s.repo.ListActive(ctx)
+	matches, err := s.repo.ListActive(ctx, nil)
 	if err != nil {
 		return nil, errors.NewInternal("Failed to list active matches", err)
 	}

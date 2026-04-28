@@ -99,11 +99,55 @@ func (m *mockRepository) LogEdit(ctx context.Context, matchID int64, actorID int
 	return nil
 }
 
+func (m *mockRepository) FindByReferenceID(ctx context.Context, referenceID string) (*Match, error) {
+	return nil, nil
+}
+
+func (m *mockRepository) ListActive(ctx context.Context, params *MatchListParams) ([]Match, error) {
+	if m.listFunc != nil {
+		return m.listFunc(ctx)
+	}
+	return []Match{}, nil
+}
+
+func (m *mockRepository) CountActive(ctx context.Context, params *MatchListParams) (int, error) {
+	return 0, nil
+}
+
+func (m *mockRepository) ListArchived(ctx context.Context) ([]Match, error) {
+	return []Match{}, nil
+}
+
+func (m *mockRepository) Archive(ctx context.Context, matchID int64, archivedBy int64) error {
+	return nil
+}
+
+func (m *mockRepository) Unarchive(ctx context.Context, matchID int64) error {
+	return nil
+}
+
+func (m *mockRepository) IsReferenceIDExcluded(ctx context.Context, referenceID string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockRepository) AddExcludedReferenceID(ctx context.Context, referenceID string, reason *string, excludedBy int64) error {
+	return nil
+}
+
+func (m *mockRepository) RemoveExcludedReferenceID(ctx context.Context, referenceID string) error {
+	return nil
+}
+
+func (m *mockRepository) ListExcludedReferenceIDs(ctx context.Context) ([]ExcludedReferenceID, error) {
+	return []ExcludedReferenceID{}, nil
+}
+
 func stringPtr(s string) *string {
 	return &s
 }
 
 func TestService_ParseCSV(t *testing.T) {
+	ctx := context.Background()
 	service := NewService(&mockRepository{})
 
 	t.Run("successfully parses valid CSV", func(t *testing.T) {
@@ -113,7 +157,7 @@ Spring League,Under 12 Girls - Falcons,2027-05-15,10:00,11:30,Field A,Championsh
 		file, filename := createMultipartFile(csvContent)
 		defer file.Close()
 
-		result, err := service.ParseCSV(file, filename)
+		result, err := service.ParseCSV(ctx, file, filename)
 
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
@@ -135,7 +179,7 @@ Spring League,Under 12 Girls - Falcons,2027-05-15,10:00,11:30,Field A,Championsh
 	})
 
 	t.Run("rejects non-CSV files", func(t *testing.T) {
-		_, err := service.ParseCSV(nil, "file.txt")
+		_, err := service.ParseCSV(context.Background(), nil, "file.txt")
 
 		if err == nil {
 			t.Fatal("Expected error for non-CSV file, got nil")
@@ -149,7 +193,7 @@ Spring League,Under 12 Girls`
 		file, filename := createMultipartFile(csvContent)
 		defer file.Close()
 
-		_, err := service.ParseCSV(file, filename)
+		_, err := service.ParseCSV(ctx, file, filename)
 
 		if err == nil {
 			t.Fatal("Expected error for missing columns, got nil")
@@ -164,7 +208,7 @@ Spring League,Under 12 Boys,2027-05-15,12:00,13:30,Field B`
 		file, filename := createMultipartFile(csvContent)
 		defer file.Close()
 
-		result, err := service.ParseCSV(file, filename)
+		result, err := service.ParseCSV(ctx, file, filename)
 
 		if err != nil {
 			t.Fatalf("Expected no error for parsing, got %v", err)
@@ -191,7 +235,7 @@ Spring League,Falcons,2027-05-15,10:00,11:30,Field A`
 		file, filename := createMultipartFile(csvContent)
 		defer file.Close()
 
-		result, err := service.ParseCSV(file, filename)
+		result, err := service.ParseCSV(ctx, file, filename)
 
 		if err != nil {
 			t.Fatalf("Expected no error for parsing, got %v", err)
@@ -214,7 +258,7 @@ Spring League,Under 12 Boys,2027-05-15,12:00,13:30,Field B,REF-001`
 		file, filename := createMultipartFile(csvContent)
 		defer file.Close()
 
-		result, err := service.ParseCSV(file, filename)
+		result, err := service.ParseCSV(ctx, file, filename)
 
 		if err != nil {
 			t.Fatalf("Expected no error for parsing, got %v", err)
@@ -229,6 +273,181 @@ Spring League,Under 12 Boys,2027-05-15,12:00,13:30,Field B,REF-001`
 		}
 		if len(dup.Matches) != 2 {
 			t.Errorf("Expected 2 matches in duplicate group, got %d", len(dup.Matches))
+		}
+	})
+
+	t.Run("detects same-match duplicates with different reference_ids", func(t *testing.T) {
+		csvContent := `event_name,team_name,start_date,start_time,end_time,location,reference_id
+Spring League,Under 12 Girls,2027-05-15,10:00,11:30,Field A,REF-001
+Spring League,Under 12 Girls,2027-05-15,10:00,11:30,Field B,REF-002`
+
+		file, filename := createMultipartFile(csvContent)
+		defer file.Close()
+
+		result, err := service.ParseCSV(ctx, file, filename)
+
+		if err != nil {
+			t.Fatalf("Expected no error (duplicates should not cause rejection), got %v", err)
+		}
+		if result == nil {
+			t.Fatal("Expected preview response, got nil")
+		}
+
+		sameMatchCount := 0
+		for _, dup := range result.Duplicates {
+			if dup.Signal == "same_match" {
+				sameMatchCount++
+				if len(dup.Matches) != 2 {
+					t.Errorf("Expected 2 matches in same_match group, got %d", len(dup.Matches))
+				}
+			}
+		}
+		if sameMatchCount != 1 {
+			t.Errorf("Expected 1 same_match duplicate group, got %d", sameMatchCount)
+		}
+	})
+
+	t.Run("detects same-event duplicates with same gender", func(t *testing.T) {
+		csvContent := `event_name,team_name,start_date,start_time,end_time,location,reference_id
+Game Day,Under 12 Girls - Falcons,2027-05-15,10:00,11:30,Field A,REF-001
+Game Day,Under 12 Girls - Hawks,2027-05-15,10:00,11:30,Field A,REF-002`
+
+		file, filename := createMultipartFile(csvContent)
+		defer file.Close()
+
+		result, err := service.ParseCSV(ctx, file, filename)
+
+		if err != nil {
+			t.Fatalf("Expected no error, got %v", err)
+		}
+
+		sameEventCount := 0
+		for _, dup := range result.Duplicates {
+			if dup.Signal == "same_event" {
+				sameEventCount++
+			}
+		}
+		if sameEventCount != 1 {
+			t.Errorf("Expected 1 same_event duplicate group, got %d", sameEventCount)
+		}
+	})
+
+	t.Run("does not flag same-event with different genders as duplicates", func(t *testing.T) {
+		csvContent := `event_name,team_name,start_date,start_time,end_time,location,reference_id
+Game Day,Under 6 Boys - Falcons,2027-05-15,10:00,11:30,Field A,REF-001
+Game Day,Under 6 Girls - Hawks,2027-05-15,10:00,11:30,Field A,REF-002`
+
+		file, filename := createMultipartFile(csvContent)
+		defer file.Close()
+
+		result, err := service.ParseCSV(ctx, file, filename)
+
+		if err != nil {
+			t.Fatalf("Expected no error, got %v", err)
+		}
+
+		for _, dup := range result.Duplicates {
+			if dup.Signal == "same_event" {
+				t.Error("Boys and Girls at same event should not be flagged as duplicates")
+			}
+		}
+	})
+
+	t.Run("does not double-flag rows already caught by signal A or B", func(t *testing.T) {
+		csvContent := `event_name,team_name,start_date,start_time,end_time,location,reference_id
+Spring League,Under 12 Girls,2027-05-15,10:00,11:30,Field A,REF-001
+Spring League,Under 12 Girls,2027-05-15,10:00,11:30,Field A,REF-001`
+
+		file, filename := createMultipartFile(csvContent)
+		defer file.Close()
+
+		result, err := service.ParseCSV(ctx, file, filename)
+
+		if err != nil {
+			t.Fatalf("Expected no error, got %v", err)
+		}
+
+		// Should be caught by Signal A (same reference_id), not Signal C
+		for _, dup := range result.Duplicates {
+			if dup.Signal == "same_event" {
+				t.Error("Rows already flagged by Signal A should not be double-flagged by Signal C")
+			}
+		}
+	})
+}
+
+func TestService_ParseCSV_StripEmojis(t *testing.T) {
+	ctx := context.Background()
+	service := NewService(&mockRepository{})
+
+	t.Run("strips emojis from event_name", func(t *testing.T) {
+		csvContent := "event_name,team_name,start_date,start_time,end_time,location\n\u26BD Spring League \U0001F3C6,Under 12 Girls,2027-05-15,10:00,11:30,Field A"
+
+		file, filename := createMultipartFile(csvContent)
+		defer file.Close()
+
+		result, err := service.ParseCSV(ctx, file, filename)
+		if err != nil {
+			t.Fatalf("Expected no error, got %v", err)
+		}
+		if len(result.Rows) != 1 {
+			t.Fatalf("Expected 1 row, got %d", len(result.Rows))
+		}
+		if result.Rows[0].EventName != "Spring League" {
+			t.Errorf("Expected 'Spring League' after emoji stripping, got '%s'", result.Rows[0].EventName)
+		}
+	})
+}
+
+func TestService_IsPracticeMatch(t *testing.T) {
+	service := NewService(&mockRepository{})
+
+	tests := []struct {
+		eventName string
+		expected  bool
+	}{
+		{"Spring Practice", true},
+		{"PRACTICE SESSION", true},
+		{"Team Training", true},
+		{"training session", true},
+		{"Spring League", false},
+		{"Mini Matches", false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.eventName, func(t *testing.T) {
+			result := service.isPracticeMatch(test.eventName)
+			if result != test.expected {
+				t.Errorf("isPracticeMatch(%q) = %v, want %v", test.eventName, result, test.expected)
+			}
+		})
+	}
+}
+
+func TestService_MatchesCustomExcludeTerm(t *testing.T) {
+	service := NewService(&mockRepository{})
+
+	t.Run("matches term in event name", func(t *testing.T) {
+		if !service.matchesCustomExcludeTerm("Mini Matches", []string{"Mini"}) {
+			t.Error("Expected 'Mini Matches' to match term 'Mini'")
+		}
+	})
+
+	t.Run("case insensitive", func(t *testing.T) {
+		if !service.matchesCustomExcludeTerm("SCRIMMAGE Game", []string{"scrimmage"}) {
+			t.Error("Expected case-insensitive match")
+		}
+	})
+
+	t.Run("no match returns false", func(t *testing.T) {
+		if service.matchesCustomExcludeTerm("Spring League", []string{"Mini", "Scrimmage"}) {
+			t.Error("Expected no match for 'Spring League'")
+		}
+	})
+
+	t.Run("ignores empty terms", func(t *testing.T) {
+		if service.matchesCustomExcludeTerm("Spring League", []string{"", "  "}) {
+			t.Error("Expected empty/whitespace terms to be ignored")
 		}
 	})
 }
@@ -369,16 +588,16 @@ func TestService_ListMatches(t *testing.T) {
 		}
 
 		service := NewService(mockRepo)
-		result, err := service.ListMatches(ctx)
+		result, err := service.ListMatches(ctx, nil)
 
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
-		if len(result) != 1 {
-			t.Fatalf("Expected 1 match, got %d", len(result))
+		if len(result.Matches) != 1 {
+			t.Fatalf("Expected 1 match, got %d", len(result.Matches))
 		}
 
-		match := result[0]
+		match := result.Matches[0]
 		if len(match.Roles) != 3 {
 			t.Errorf("Expected 3 roles, got %d", len(match.Roles))
 		}
@@ -400,8 +619,6 @@ func TestService_ListMatches(t *testing.T) {
 			getRolesFunc: func(ctx context.Context, matchID int64) ([]MatchRole, error) {
 				if matchID == 1 {
 					refID := int64(10)
-					// U10 with center assigned and 2 unassigned ARs should be "full"
-					// because ARs are optional for U10
 					return []MatchRole{
 						{ID: 1, MatchID: 1, RoleType: "center", AssignedRefereeID: &refID},
 						{ID: 2, MatchID: 1, RoleType: "assistant_1"},
@@ -413,17 +630,16 @@ func TestService_ListMatches(t *testing.T) {
 		}
 
 		service := NewService(mockRepo)
-		result, err := service.ListMatches(ctx)
+		result, err := service.ListMatches(ctx, nil)
 
 		if err != nil {
 			t.Fatalf("Expected no error, got %v", err)
 		}
-		if len(result) != 1 {
-			t.Fatalf("Expected 1 match, got %d", len(result))
+		if len(result.Matches) != 1 {
+			t.Fatalf("Expected 1 match, got %d", len(result.Matches))
 		}
 
-		match := result[0]
-		// U10 with center assigned should be "full" (ARs don't count)
+		match := result.Matches[0]
 		if match.AssignmentStatus != "full" {
 			t.Errorf("Expected status 'full' for U10 with center assigned, got '%s'", match.AssignmentStatus)
 		}
@@ -751,6 +967,29 @@ func TestService_ImportMatches(t *testing.T) {
 			t.Error("Expected error message for invalid date")
 		}
 	})
+}
+
+func TestExtractGender(t *testing.T) {
+	tests := []struct {
+		teamName string
+		expected string
+	}{
+		{"Under 12 Girls - Falcons", "girls"},
+		{"Under 6 Boys", "boys"},
+		{"Under 10 BOYS - Hawks", "boys"},
+		{"under 8 girls", "girls"},
+		{"Senior Team", ""},
+		{"U12 Girls", ""},
+	}
+
+	for _, test := range tests {
+		t.Run(test.teamName, func(t *testing.T) {
+			result := extractGender(test.teamName)
+			if result != test.expected {
+				t.Errorf("extractGender(%q) = %q, want %q", test.teamName, result, test.expected)
+			}
+		})
+	}
 }
 
 func TestExtractAgeGroup(t *testing.T) {
