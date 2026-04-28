@@ -38,12 +38,12 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
-// MatchExists checks if a match exists and is active
+// MatchExists checks if a match exists, is active, and not archived
 func (r *Repository) MatchExists(ctx context.Context, matchID int64) (bool, error) {
 	var exists bool
 	err := r.db.QueryRowContext(
 		ctx,
-		"SELECT EXISTS(SELECT 1 FROM matches WHERE id = $1 AND status = 'active')",
+		"SELECT EXISTS(SELECT 1 FROM matches WHERE id = $1 AND status = 'active' AND archived = FALSE)",
 		matchID,
 	).Scan(&exists)
 
@@ -187,7 +187,7 @@ func (r *Repository) GetRefereeExistingRoleOnMatch(ctx context.Context, matchID 
 	return &result, nil
 }
 
-// FindConflictingAssignments finds all assignments for a referee that overlap with the given time window
+// FindConflictingAssignments finds all active (non-archived) assignments for a referee that overlap with the given time window
 func (r *Repository) FindConflictingAssignments(ctx context.Context, refereeID int64, matchID int64, startTime time.Time, endTime time.Time) ([]ConflictMatch, error) {
 	rows, err := r.db.QueryContext(
 		ctx,
@@ -197,6 +197,7 @@ func (r *Repository) FindConflictingAssignments(ctx context.Context, refereeID i
 		 WHERE mr.assigned_referee_id = $1
 		   AND m.id != $2
 		   AND m.status = 'active'
+		   AND m.archived = FALSE
 		   AND (
 			 (m.match_date + m.start_time::interval, m.match_date + m.end_time::interval)
 			 OVERLAPS

@@ -89,7 +89,7 @@ func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Get all upcoming, non-cancelled matches
+	// Get all upcoming, non-cancelled, non-archived matches
 	// Exclude days marked unavailable UNLESS the referee is already assigned to that match
 	rows, err := db.Query(`
 		SELECT
@@ -99,6 +99,7 @@ func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request)
 		FROM matches m
 		WHERE m.match_date >= CURRENT_DATE
 		  AND m.status = 'active'
+		  AND m.archived = FALSE
 		  AND (
 			-- Either the day is not marked unavailable
 			NOT EXISTS (
@@ -234,6 +235,7 @@ func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request)
 
 			// Check for scheduling conflicts with other assignments
 			// Two time ranges overlap if: start1 < end2 AND start2 < end1
+			// Only check conflicts with active (non-archived) matches
 			conflictRows, err := db.Query(`
 				SELECT
 					m2.id, m2.event_name, m2.team_name,
@@ -243,6 +245,7 @@ func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request)
 				WHERE mr2.assigned_referee_id = $1
 				  AND m2.id != $2
 				  AND m2.status = 'active'
+				  AND m2.archived = FALSE
 				  AND m2.match_date = $3
 				  AND m2.start_time < $5
 				  AND m2.end_time > $4

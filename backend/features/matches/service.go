@@ -279,9 +279,10 @@ func (s *Service) CreateRoleSlotsForMatch(ctx context.Context, matchID int64, ag
 	return nil
 }
 
-// ListMatches returns all matches with role assignments
+// ListMatches returns all active (non-archived) matches with role assignments
+// This is the default view for assignors scheduling matches
 func (s *Service) ListMatches(ctx context.Context) ([]MatchWithRoles, error) {
-	matches, err := s.repo.List(ctx)
+	matches, err := s.repo.ListActive(ctx)
 	if err != nil {
 		return nil, errors.NewInternal("Failed to fetch matches", err)
 	}

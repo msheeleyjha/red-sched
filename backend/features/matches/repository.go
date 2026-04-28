@@ -375,12 +375,12 @@ func (r *Repository) GetCurrentRoles(ctx context.Context, matchID int64) ([]stri
 	return roleTypes, nil
 }
 
-// MatchExists checks if a match exists and is active
+// MatchExists checks if a match exists, is active, and not archived
 func (r *Repository) MatchExists(ctx context.Context, matchID int64) (bool, error) {
 	var exists bool
 	err := r.db.QueryRowContext(
 		ctx,
-		"SELECT EXISTS(SELECT 1 FROM matches WHERE id = $1 AND status = 'active')",
+		"SELECT EXISTS(SELECT 1 FROM matches WHERE id = $1 AND status = 'active' AND archived = FALSE)",
 		matchID,
 	).Scan(&exists)
 
