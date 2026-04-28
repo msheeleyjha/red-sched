@@ -2,9 +2,8 @@
 -- Epic 5: Match Reporting by Referees
 -- Story 5.6: Assignment Change Indicator
 
--- Add updated_at timestamp to track when assignment was last modified
-ALTER TABLE match_roles
-ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+-- Note: updated_at already exists from migration 002_matches_schema.up.sql
+-- We only need to add the viewed_by_referee column
 
 -- Add viewed_by_referee boolean to track if referee has seen the update
 ALTER TABLE match_roles
