@@ -47,18 +47,19 @@ type MatchWithRoles struct {
 
 // CSVRow represents a parsed row from Stack Team App CSV
 type CSVRow struct {
-	EventName   string  `json:"event_name"`
-	TeamName    string  `json:"team_name"`
-	StartDate   string  `json:"start_date"`
-	EndDate     string  `json:"end_date"`
-	StartTime   string  `json:"start_time"`
-	EndTime     string  `json:"end_time"`
-	Description string  `json:"description"`
-	Location    string  `json:"location"`
-	ReferenceID string  `json:"reference_id"`
-	AgeGroup    *string `json:"age_group"`
-	Error       *string `json:"error"`
-	RowNumber   int     `json:"row_number"`
+	EventName    string  `json:"event_name"`
+	TeamName     string  `json:"team_name"`
+	StartDate    string  `json:"start_date"`
+	EndDate      string  `json:"end_date"`
+	StartTime    string  `json:"start_time"`
+	EndTime      string  `json:"end_time"`
+	Description  string  `json:"description"`
+	Location     string  `json:"location"`
+	ReferenceID  string  `json:"reference_id"`
+	AgeGroup     *string `json:"age_group"`
+	Error        *string `json:"error"`
+	FilterReason *string `json:"filter_reason,omitempty"` // Story 6.4: Why row was filtered
+	RowNumber    int     `json:"row_number"`
 }
 
 // ImportPreviewResponse contains parsed rows and any duplicates found
@@ -78,6 +79,14 @@ type DuplicateMatchGroup struct {
 type ImportConfirmRequest struct {
 	Rows        []CSVRow            `json:"rows"`
 	Resolutions map[string][]CSVRow `json:"resolutions"` // Key: duplicate group ID, Value: rows to import
+	Filters     *ImportFilters      `json:"filters,omitempty"` // Story 6.4: Optional filters
+}
+
+// ImportFilters contains filtering options for CSV import (Story 6.4)
+type ImportFilters struct {
+	FilterPractices bool     `json:"filter_practices"` // Skip matches with "Practice" in team name
+	FilterAway      bool     `json:"filter_away"`      // Skip away matches
+	HomeLocations   []string `json:"home_locations"`   // List of home venue names/patterns
 }
 
 // MatchUpdateRequest represents the update payload for a match
@@ -98,6 +107,7 @@ type ImportResult struct {
 	Imported int      `json:"imported"` // Deprecated: use Created + Updated
 	Created  int      `json:"created"`  // Story 6.2: New matches created
 	Updated  int      `json:"updated"`  // Story 6.2: Existing matches updated
-	Skipped  int      `json:"skipped"`
+	Skipped  int      `json:"skipped"`  // Rows skipped due to errors
+	Filtered int      `json:"filtered"` // Story 6.4: Rows filtered (practices/away)
 	Errors   []string `json:"errors"`
 }

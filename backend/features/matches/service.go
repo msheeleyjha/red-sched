@@ -244,12 +244,81 @@ func (s *Service) detectDuplicates(rows []CSVRow) []DuplicateMatchGroup {
 	return duplicates
 }
 
+// applyFilters marks rows for filtering based on import filter options (Story 6.4)
+func (s *Service) applyFilters(rows []CSVRow, filters *ImportFilters) []CSVRow {
+	if filters == nil {
+		return rows
+	}
+
+	for i := range rows {
+		// Skip rows that already have errors
+		if rows[i].Error != nil {
+			continue
+		}
+
+		// Filter 1: Practice matches
+		if filters.FilterPractices {
+			if s.isPracticeMatch(rows[i].TeamName) {
+				reason := "Practice match"
+				rows[i].FilterReason = &reason
+				continue
+			}
+		}
+
+		// Filter 2: Away matches
+		if filters.FilterAway {
+			if s.isAwayMatch(rows[i].Location, filters.HomeLocations) {
+				reason := "Away match"
+				rows[i].FilterReason = &reason
+				continue
+			}
+		}
+	}
+
+	return rows
+}
+
+// isPracticeMatch checks if team name indicates a practice match
+func (s *Service) isPracticeMatch(teamName string) bool {
+	return strings.Contains(strings.ToLower(teamName), "practice")
+}
+
+// isAwayMatch checks if location indicates an away match
+func (s *Service) isAwayMatch(location string, homeLocations []string) bool {
+	locationLower := strings.ToLower(location)
+
+	// Check for explicit "away" indicators
+	awayKeywords := []string{"away", " @ ", " vs ", "opponent"}
+	for _, keyword := range awayKeywords {
+		if strings.Contains(locationLower, strings.ToLower(keyword)) {
+			return true
+		}
+	}
+
+	// If home locations provided, check if location matches any home venue
+	if len(homeLocations) > 0 {
+		for _, home := range homeLocations {
+			if strings.Contains(locationLower, strings.ToLower(home)) {
+				// Location contains a home venue name - it's a home match
+				return false
+			}
+		}
+		// No home venue match found - consider it away
+		return true
+	}
+
+	// Default: if no home locations configured, don't filter as away
+	return false
+}
+
 // ImportMatches confirms and imports matches to database
 // Story 6.2: Now supports update-in-place for existing matches
+// Story 6.4: Now supports filtering practices and away matches
 func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, currentUserID int64) (*ImportResult, error) {
 	created := 0
 	updated := 0
 	skipped := 0
+	filtered := 0
 	errs := []string{}
 
 	// Load US Eastern timezone
@@ -258,10 +327,19 @@ func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, 
 		return nil, errors.NewInternal("Failed to load timezone", err)
 	}
 
-	for _, row := range req.Rows {
+	// Story 6.4: Apply filters to rows
+	rows := s.applyFilters(req.Rows, req.Filters)
+
+	for _, row := range rows {
 		// Skip rows with unresolved errors
 		if row.Error != nil {
 			skipped++
+			continue
+		}
+
+		// Story 6.4: Skip filtered rows
+		if row.FilterReason != nil {
+			filtered++
 			continue
 		}
 
@@ -368,6 +446,7 @@ func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, 
 		Created:  created,
 		Updated:  updated,
 		Skipped:  skipped,
+		Filtered: filtered, // Story 6.4
 		Errors:   errs,
 	}, nil
 }
