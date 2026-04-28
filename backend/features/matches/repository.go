@@ -26,6 +26,12 @@ type RepositoryInterface interface {
 
 	// Match queries
 	MatchExists(ctx context.Context, matchID int64) (bool, error)
+	ListActive(ctx context.Context) ([]Match, error)
+	ListArchived(ctx context.Context) ([]Match, error)
+
+	// Archival operations
+	Archive(ctx context.Context, matchID int64, archivedBy int64) error
+	Unarchive(ctx context.Context, matchID int64) error
 
 	// History logging
 	LogEdit(ctx context.Context, matchID int64, actorID int64, changeDescription string) error
@@ -77,7 +83,8 @@ func (r *Repository) Create(ctx context.Context, match *Match) (*Match, error) {
 func (r *Repository) FindByID(ctx context.Context, id int64) (*Match, error) {
 	query := `
 		SELECT id, event_name, team_name, age_group, match_date, start_time, end_time,
-		       location, description, reference_id, status, created_by, created_at, updated_at
+		       location, description, reference_id, status, archived, archived_at, archived_by,
+		       created_by, created_at, updated_at
 		FROM matches
 		WHERE id = $1 AND status != 'deleted'
 	`
@@ -95,6 +102,9 @@ func (r *Repository) FindByID(ctx context.Context, id int64) (*Match, error) {
 		&match.Description,
 		&match.ReferenceID,
 		&match.Status,
+		&match.Archived,
+		&match.ArchivedAt,
+		&match.ArchivedBy,
 		&match.CreatedBy,
 		&match.CreatedAt,
 		&match.UpdatedAt,
@@ -114,7 +124,8 @@ func (r *Repository) FindByID(ctx context.Context, id int64) (*Match, error) {
 func (r *Repository) List(ctx context.Context) ([]Match, error) {
 	query := `
 		SELECT id, event_name, team_name, age_group, match_date, start_time, end_time,
-		       location, description, reference_id, status, created_by, created_at, updated_at
+		       location, description, reference_id, status, archived, archived_at, archived_by,
+		       created_by, created_at, updated_at
 		FROM matches
 		WHERE status != 'deleted'
 		ORDER BY match_date ASC, start_time ASC, id ASC
@@ -141,6 +152,9 @@ func (r *Repository) List(ctx context.Context) ([]Match, error) {
 			&m.Description,
 			&m.ReferenceID,
 			&m.Status,
+			&m.Archived,
+			&m.ArchivedAt,
+			&m.ArchivedBy,
 			&m.CreatedBy,
 			&m.CreatedAt,
 			&m.UpdatedAt,
@@ -389,4 +403,156 @@ func GetAgeGroupInt(ageGroup *string) (int, error) {
 	}
 
 	return age, nil
+}
+
+// ListActive retrieves all non-archived matches
+func (r *Repository) ListActive(ctx context.Context) ([]Match, error) {
+	query := `
+		SELECT id, event_name, team_name, age_group, match_date, start_time, end_time,
+		       location, description, reference_id, status, archived, archived_at, archived_by,
+		       created_by, created_at, updated_at
+		FROM matches
+		WHERE status != 'deleted' AND archived = FALSE
+		ORDER BY match_date ASC, start_time ASC, id ASC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list active matches: %w", err)
+	}
+	defer rows.Close()
+
+	matches := []Match{}
+	for rows.Next() {
+		var m Match
+		err := rows.Scan(
+			&m.ID,
+			&m.EventName,
+			&m.TeamName,
+			&m.AgeGroup,
+			&m.MatchDate,
+			&m.StartTime,
+			&m.EndTime,
+			&m.Location,
+			&m.Description,
+			&m.ReferenceID,
+			&m.Status,
+			&m.Archived,
+			&m.ArchivedAt,
+			&m.ArchivedBy,
+			&m.CreatedBy,
+			&m.CreatedAt,
+			&m.UpdatedAt,
+		)
+		if err != nil {
+			continue
+		}
+		matches = append(matches, m)
+	}
+
+	return matches, nil
+}
+
+// ListArchived retrieves all archived matches
+func (r *Repository) ListArchived(ctx context.Context) ([]Match, error) {
+	query := `
+		SELECT id, event_name, team_name, age_group, match_date, start_time, end_time,
+		       location, description, reference_id, status, archived, archived_at, archived_by,
+		       created_by, created_at, updated_at
+		FROM matches
+		WHERE status != 'deleted' AND archived = TRUE
+		ORDER BY archived_at DESC, match_date DESC, id DESC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list archived matches: %w", err)
+	}
+	defer rows.Close()
+
+	matches := []Match{}
+	for rows.Next() {
+		var m Match
+		err := rows.Scan(
+			&m.ID,
+			&m.EventName,
+			&m.TeamName,
+			&m.AgeGroup,
+			&m.MatchDate,
+			&m.StartTime,
+			&m.EndTime,
+			&m.Location,
+			&m.Description,
+			&m.ReferenceID,
+			&m.Status,
+			&m.Archived,
+			&m.ArchivedAt,
+			&m.ArchivedBy,
+			&m.CreatedBy,
+			&m.CreatedAt,
+			&m.UpdatedAt,
+		)
+		if err != nil {
+			continue
+		}
+		matches = append(matches, m)
+	}
+
+	return matches, nil
+}
+
+// Archive marks a match as archived
+func (r *Repository) Archive(ctx context.Context, matchID int64, archivedBy int64) error {
+	query := `
+		UPDATE matches
+		SET archived = TRUE,
+		    archived_at = NOW(),
+		    archived_by = $1,
+		    updated_at = NOW()
+		WHERE id = $2 AND archived = FALSE
+	`
+
+	result, err := r.db.ExecContext(ctx, query, archivedBy, matchID)
+	if err != nil {
+		return fmt.Errorf("failed to archive match: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("match %d not found or already archived", matchID)
+	}
+
+	return nil
+}
+
+// Unarchive marks a match as not archived (for administrative purposes)
+func (r *Repository) Unarchive(ctx context.Context, matchID int64) error {
+	query := `
+		UPDATE matches
+		SET archived = FALSE,
+		    archived_at = NULL,
+		    archived_by = NULL,
+		    updated_at = NOW()
+		WHERE id = $1 AND archived = TRUE
+	`
+
+	result, err := r.db.ExecContext(ctx, query, matchID)
+	if err != nil {
+		return fmt.Errorf("failed to unarchive match: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("match %d not found or not archived", matchID)
+	}
+
+	return nil
 }

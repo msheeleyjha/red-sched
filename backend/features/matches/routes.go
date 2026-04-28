@@ -17,6 +17,18 @@ func (h *Handler) RegisterRoutes(r *mux.Router, authMiddleware func(http.Handler
 	// List all matches - requires manage_matches permission
 	r.HandleFunc("/api/matches", authMiddleware(requirePermission("manage_matches", h.ListMatches))).Methods("GET")
 
+	// List active matches (non-archived) - requires manage_matches permission
+	r.HandleFunc("/api/matches/active", authMiddleware(requirePermission("manage_matches", h.ListActiveMatches))).Methods("GET")
+
+	// List archived matches (history) - authenticated users can view
+	r.HandleFunc("/api/matches/archived", authMiddleware(h.ListArchivedMatches)).Methods("GET")
+
+	// Archive match - requires manage_matches permission
+	r.HandleFunc("/api/matches/{id}/archive", authMiddleware(requirePermission("manage_matches", h.ArchiveMatch))).Methods("POST")
+
+	// Unarchive match - requires manage_matches permission
+	r.HandleFunc("/api/matches/{id}/unarchive", authMiddleware(requirePermission("manage_matches", h.UnarchiveMatch))).Methods("POST")
+
 	// Update match - requires manage_matches permission
 	r.HandleFunc("/api/matches/{id}", authMiddleware(requirePermission("manage_matches", h.UpdateMatch))).Methods("PUT")
 

@@ -138,3 +138,77 @@ func (h *Handler) AddRoleSlot(w http.ResponseWriter, r *http.Request) {
 		"role_type": roleType,
 	})
 }
+
+// ListActiveMatches returns all non-archived matches
+func (h *Handler) ListActiveMatches(w http.ResponseWriter, r *http.Request) {
+	matches, err := h.service.ListActiveMatches(r.Context())
+	if err != nil {
+		errors.WriteError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(matches)
+}
+
+// ListArchivedMatches returns all archived matches (history view)
+func (h *Handler) ListArchivedMatches(w http.ResponseWriter, r *http.Request) {
+	matches, err := h.service.ListArchivedMatches(r.Context())
+	if err != nil {
+		errors.WriteError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(matches)
+}
+
+// ArchiveMatch archives a match (marks as completed)
+func (h *Handler) ArchiveMatch(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.GetUserFromContext(r.Context())
+	if !ok {
+		errors.WriteError(w, errors.NewUnauthorized("User not found in context"))
+		return
+	}
+
+	vars := mux.Vars(r)
+	matchID, err := strconv.ParseInt(vars["id"], 10, 64)
+	if err != nil {
+		errors.WriteError(w, errors.NewBadRequest("Invalid match ID"))
+		return
+	}
+
+	err = h.service.ArchiveMatch(r.Context(), matchID, user.ID)
+	if err != nil {
+		errors.WriteError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Match archived successfully",
+	})
+}
+
+// UnarchiveMatch unarchives a match (for administrative purposes)
+func (h *Handler) UnarchiveMatch(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	matchID, err := strconv.ParseInt(vars["id"], 10, 64)
+	if err != nil {
+		errors.WriteError(w, errors.NewBadRequest("Invalid match ID"))
+		return
+	}
+
+	err = h.service.UnarchiveMatch(r.Context(), matchID)
+	if err != nil {
+		errors.WriteError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Match unarchived successfully",
+	})
+}

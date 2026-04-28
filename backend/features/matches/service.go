@@ -590,3 +590,133 @@ func (s *Service) AddRoleSlot(ctx context.Context, matchID int64, roleType strin
 
 	return nil
 }
+
+// ListActiveMatches retrieves all non-archived matches with their role assignments
+func (s *Service) ListActiveMatches(ctx context.Context) ([]MatchWithRoles, error) {
+	matches, err := s.repo.ListActive(ctx)
+	if err != nil {
+		return nil, errors.NewInternal("Failed to list active matches", err)
+	}
+
+	return s.enrichMatchesWithRoles(ctx, matches)
+}
+
+// ListArchivedMatches retrieves all archived matches with their role assignments
+func (s *Service) ListArchivedMatches(ctx context.Context) ([]MatchWithRoles, error) {
+	matches, err := s.repo.ListArchived(ctx)
+	if err != nil {
+		return nil, errors.NewInternal("Failed to list archived matches", err)
+	}
+
+	return s.enrichMatchesWithRoles(ctx, matches)
+}
+
+// enrichMatchesWithRoles adds role information to a list of matches
+func (s *Service) enrichMatchesWithRoles(ctx context.Context, matches []Match) ([]MatchWithRoles, error) {
+	result := make([]MatchWithRoles, 0, len(matches))
+
+	for _, match := range matches {
+		roles, err := s.repo.GetRoles(ctx, match.ID)
+		if err != nil {
+			// Log error but continue processing
+			continue
+		}
+
+		matchWithRoles := MatchWithRoles{
+			Match: match,
+			Roles: roles,
+		}
+
+		// Calculate assignment status
+		matchWithRoles.AssignmentStatus = s.calculateAssignmentStatus(roles)
+
+		// Check for overdue acknowledgments
+		matchWithRoles.HasOverdueAck = s.hasOverdueAcknowledgment(roles)
+
+		result = append(result, matchWithRoles)
+	}
+
+	return result, nil
+}
+
+// calculateAssignmentStatus determines if a match is unassigned, partially assigned, or fully assigned
+func (s *Service) calculateAssignmentStatus(roles []MatchRole) string {
+	if len(roles) == 0 {
+		return "unassigned"
+	}
+
+	assignedCount := 0
+	for _, role := range roles {
+		if role.AssignedRefereeID != nil {
+			assignedCount++
+		}
+	}
+
+	if assignedCount == 0 {
+		return "unassigned"
+	} else if assignedCount < len(roles) {
+		return "partial"
+	} else {
+		return "full"
+	}
+}
+
+// hasOverdueAcknowledgment checks if any role has an overdue acknowledgment
+func (s *Service) hasOverdueAcknowledgment(roles []MatchRole) bool {
+	for _, role := range roles {
+		if role.AckOverdue {
+			return true
+		}
+	}
+	return false
+}
+
+// ArchiveMatch archives a match (marks as completed and removes from active views)
+func (s *Service) ArchiveMatch(ctx context.Context, matchID int64, userID int64) error {
+	// Verify match exists and is active
+	match, err := s.repo.FindByID(ctx, matchID)
+	if err != nil {
+		return errors.NewInternal("Failed to find match", err)
+	}
+	if match == nil {
+		return errors.NewNotFound("Match")
+	}
+
+	// Check if already archived
+	if match.Archived {
+		return errors.NewBadRequest("Match is already archived")
+	}
+
+	// Archive the match
+	err = s.repo.Archive(ctx, matchID, userID)
+	if err != nil {
+		return errors.NewInternal("Failed to archive match", err)
+	}
+
+	return nil
+}
+
+// UnarchiveMatch unarchives a match (for administrative purposes)
+func (s *Service) UnarchiveMatch(ctx context.Context, matchID int64) error {
+	// Verify match exists
+	match, err := s.repo.FindByID(ctx, matchID)
+	if err != nil {
+		return errors.NewInternal("Failed to find match", err)
+	}
+	if match == nil {
+		return errors.NewNotFound("Match")
+	}
+
+	// Check if actually archived
+	if !match.Archived {
+		return errors.NewBadRequest("Match is not archived")
+	}
+
+	// Unarchive the match
+	err = s.repo.Unarchive(ctx, matchID)
+	if err != nil {
+		return errors.NewInternal("Failed to unarchive match", err)
+	}
+
+	return nil
+}

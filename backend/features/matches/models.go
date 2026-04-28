@@ -15,6 +15,9 @@ type Match struct {
 	Description *string    `json:"description"`
 	ReferenceID *string    `json:"reference_id"`
 	Status      string     `json:"status"`
+	Archived    bool       `json:"archived"`
+	ArchivedAt  *time.Time `json:"archived_at,omitempty"`
+	ArchivedBy  *int64     `json:"archived_by,omitempty"`
 	CreatedBy   int64      `json:"created_by"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
