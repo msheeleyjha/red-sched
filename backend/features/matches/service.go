@@ -1016,9 +1016,11 @@ func (s *Service) resetViewedStatusForMatch(ctx context.Context, matchID int64) 
 	// In a production system, you might inject the assignments repository
 
 	// Execute raw SQL to avoid circular dependency
-	query := `UPDATE match_roles
+	// Note: Table was renamed from match_roles to assignments in migration 009
+	// Note: Column was renamed from assigned_referee_id to referee_id in migration 009
+	query := `UPDATE assignments
 	          SET viewed_by_referee = false, updated_at = NOW()
-	          WHERE match_id = $1 AND assigned_referee_id IS NOT NULL`
+	          WHERE match_id = $1 AND referee_id IS NOT NULL`
 
 	_, err := s.repo.(*Repository).db.ExecContext(ctx, query, matchID)
 	if err != nil {
