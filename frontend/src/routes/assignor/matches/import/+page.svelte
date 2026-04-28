@@ -14,6 +14,12 @@
 	let duplicates: any[] = [];
 	let validRows: any[] = [];
 	let errorRows: any[] = [];
+	let uniqueLocations: string[] = [];
+
+	// Filter options (Story 6.4)
+	let filterPractices = false;
+	let filterAway = false;
+	let homeLocations: string[] = [];
 
 	// Import results
 	let importResult: any = null;
@@ -57,6 +63,7 @@
 				const data = await response.json();
 				rows = data.rows || [];
 				duplicates = data.duplicates || [];
+				uniqueLocations = data.unique_locations || [];
 
 				// Separate valid and error rows
 				validRows = rows.filter((r) => !r.error);
@@ -87,7 +94,12 @@
 				},
 				body: JSON.stringify({
 					rows: validRows,
-					resolutions: {} // TODO: Story 3.2 will handle duplicate resolution
+					resolutions: {}, // TODO: Story 3.2 will handle duplicate resolution
+					filters: {
+						filter_practices: filterPractices,
+						filter_away: filterAway,
+						home_locations: homeLocations
+					}
 				})
 			});
 
@@ -112,9 +124,52 @@
 		duplicates = [];
 		validRows = [];
 		errorRows = [];
+		uniqueLocations = [];
+		filterPractices = false;
+		filterAway = false;
+		homeLocations = [];
 		importResult = null;
 		error = '';
 	}
+
+	// Helper functions for location selection
+	function toggleLocation(location: string) {
+		if (homeLocations.includes(location)) {
+			homeLocations = homeLocations.filter((l) => l !== location);
+		} else {
+			homeLocations = [...homeLocations, location];
+		}
+	}
+
+	function selectAllLocations() {
+		homeLocations = [...uniqueLocations];
+	}
+
+	function clearAllLocations() {
+		homeLocations = [];
+	}
+
+	// Computed values for preview
+	$: filteredCount = (() => {
+		if (!filterPractices && !filterAway) return 0;
+
+		let count = 0;
+		validRows.forEach((row) => {
+			// Check practice filter
+			if (filterPractices && row.team_name?.toLowerCase().includes('practice')) {
+				count++;
+				return;
+			}
+			// Check away match filter
+			if (filterAway && homeLocations.length > 0) {
+				const isHome = homeLocations.some((loc) => row.location?.includes(loc));
+				if (!isHome) count++;
+			}
+		});
+		return count;
+	})();
+
+	$: willImportCount = validRows.length - filteredCount;
 </script>
 
 <svelte:head>
@@ -181,6 +236,98 @@
 					</p>
 				</div>
 			{/if}
+
+			<!-- Filter Options (Story 6.4) -->
+			<div class="section filter-section">
+				<h3>🔍 Filter Options</h3>
+				<p class="section-info">
+					Optionally filter out practice matches and away matches before importing.
+				</p>
+
+				<div class="filter-options">
+					<!-- Practice Filter -->
+					<label class="filter-checkbox">
+						<input type="checkbox" bind:checked={filterPractices} />
+						<span class="filter-label">
+							<strong>Filter Practice Matches</strong>
+							<span class="filter-description"
+								>Skip matches with "Practice" in the team name</span
+							>
+						</span>
+					</label>
+
+					<!-- Away Match Filter -->
+					<label class="filter-checkbox">
+						<input type="checkbox" bind:checked={filterAway} />
+						<span class="filter-label">
+							<strong>Filter Away Matches</strong>
+							<span class="filter-description">Skip matches not at home locations</span>
+						</span>
+					</label>
+
+					<!-- Home Locations Selection (shown when filterAway is checked) -->
+					{#if filterAway && uniqueLocations.length > 0}
+						<div class="home-locations-panel">
+							<div class="locations-header">
+								<h4>Select Home Locations ({homeLocations.length} of {uniqueLocations.length} selected)</h4>
+								<div class="locations-actions">
+									<button
+										type="button"
+										on:click={selectAllLocations}
+										class="btn-link"
+										disabled={homeLocations.length === uniqueLocations.length}
+									>
+										Select All
+									</button>
+									<button
+										type="button"
+										on:click={clearAllLocations}
+										class="btn-link"
+										disabled={homeLocations.length === 0}
+									>
+										Clear All
+									</button>
+								</div>
+							</div>
+
+							<div class="locations-grid">
+								{#each uniqueLocations as location}
+									<label class="location-checkbox">
+										<input
+											type="checkbox"
+											checked={homeLocations.includes(location)}
+											on:change={() => toggleLocation(location)}
+										/>
+										<span class="location-name">{location}</span>
+									</label>
+								{/each}
+							</div>
+
+							{#if homeLocations.length === 0}
+								<div class="alert alert-warning">
+									<strong>⚠️ No home locations selected</strong>
+									<p>All matches will be filtered as away matches. Select at least one home location.</p>
+								</div>
+							{/if}
+						</div>
+					{/if}
+
+					<!-- Filter Preview -->
+					{#if filterPractices || (filterAway && homeLocations.length > 0)}
+						<div class="filter-preview">
+							<strong>Filter Preview:</strong>
+							<div class="filter-stats">
+								<span class="stat-item">
+									<span class="stat-value">{willImportCount}</span> matches will be imported
+								</span>
+								<span class="stat-item filtered">
+									<span class="stat-value">{filteredCount}</span> will be filtered
+								</span>
+							</div>
+						</div>
+					{/if}
+				</div>
+			</div>
 
 			{#if errorRows.length > 0}
 				<div class="section">
@@ -258,9 +405,15 @@
 				<button
 					on:click={handleConfirmImport}
 					class="btn btn-primary"
-					disabled={importing || validRows.length === 0}
+					disabled={importing || validRows.length === 0 || (filterAway && homeLocations.length === 0)}
 				>
-					{importing ? 'Importing...' : `Import ${validRows.length} Matches`}
+					{#if importing}
+						Importing...
+					{:else if filteredCount > 0}
+						Import {willImportCount} Matches (Filter {filteredCount})
+					{:else}
+						Import {validRows.length} Matches
+					{/if}
 				</button>
 			</div>
 		</div>
@@ -269,14 +422,42 @@
 			<h2>✅ Import Complete</h2>
 
 			<div class="result-summary">
-				<div class="result-item success">
-					<span class="result-label">Imported:</span>
-					<span class="result-value">{importResult.imported}</span>
-				</div>
-				<div class="result-item">
-					<span class="result-label">Skipped:</span>
-					<span class="result-value">{importResult.skipped}</span>
-				</div>
+				{#if importResult.created !== undefined}
+					<div class="result-item success">
+						<span class="result-label">Created:</span>
+						<span class="result-value">{importResult.created}</span>
+					</div>
+				{/if}
+				{#if importResult.updated !== undefined && importResult.updated > 0}
+					<div class="result-item updated">
+						<span class="result-label">Updated:</span>
+						<span class="result-value">{importResult.updated}</span>
+					</div>
+				{/if}
+				{#if importResult.imported !== undefined}
+					<div class="result-item success">
+						<span class="result-label">Total Imported:</span>
+						<span class="result-value">{importResult.imported}</span>
+					</div>
+				{/if}
+				{#if importResult.skipped !== undefined && importResult.skipped > 0}
+					<div class="result-item">
+						<span class="result-label">Skipped (Errors):</span>
+						<span class="result-value">{importResult.skipped}</span>
+					</div>
+				{/if}
+				{#if importResult.filtered !== undefined && importResult.filtered > 0}
+					<div class="result-item filtered">
+						<span class="result-label">Filtered:</span>
+						<span class="result-value">{importResult.filtered}</span>
+					</div>
+				{/if}
+				{#if importResult.excluded !== undefined && importResult.excluded > 0}
+					<div class="result-item excluded">
+						<span class="result-label">Excluded:</span>
+						<span class="result-value">{importResult.excluded}</span>
+					</div>
+				{/if}
 			</div>
 
 			{#if importResult.errors && importResult.errors.length > 0}
@@ -519,6 +700,187 @@
 		background-color: var(--bg-secondary);
 	}
 
+	/* Filter Options Styles */
+	.filter-section {
+		background-color: var(--bg-secondary);
+		padding: 1.5rem;
+		border-radius: 0.5rem;
+		border: 1px solid var(--border-color);
+	}
+
+	.filter-options {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+	}
+
+	.filter-checkbox {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		cursor: pointer;
+		padding: 1rem;
+		background-color: white;
+		border-radius: 0.375rem;
+		border: 1px solid var(--border-color);
+		transition: all 0.2s;
+	}
+
+	.filter-checkbox:hover {
+		border-color: var(--primary-color);
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+	}
+
+	.filter-checkbox input[type='checkbox'] {
+		margin-top: 0.25rem;
+		width: 1.125rem;
+		height: 1.125rem;
+		cursor: pointer;
+	}
+
+	.filter-label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		flex: 1;
+	}
+
+	.filter-description {
+		color: var(--text-secondary);
+		font-size: 0.875rem;
+		font-weight: normal;
+	}
+
+	.home-locations-panel {
+		background-color: white;
+		padding: 1.5rem;
+		border-radius: 0.375rem;
+		border: 1px solid var(--border-color);
+		margin-left: 2rem;
+	}
+
+	.locations-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1rem;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
+	.locations-header h4 {
+		font-size: 1rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin: 0;
+	}
+
+	.locations-actions {
+		display: flex;
+		gap: 1rem;
+	}
+
+	.btn-link {
+		background: none;
+		border: none;
+		color: var(--primary-color);
+		cursor: pointer;
+		font-size: 0.875rem;
+		padding: 0.25rem 0.5rem;
+		text-decoration: underline;
+		transition: opacity 0.2s;
+	}
+
+	.btn-link:hover:not(:disabled) {
+		opacity: 0.8;
+	}
+
+	.btn-link:disabled {
+		color: var(--text-secondary);
+		cursor: not-allowed;
+		text-decoration: none;
+	}
+
+	.locations-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+
+	.location-checkbox {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem;
+		background-color: var(--bg-secondary);
+		border-radius: 0.25rem;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.location-checkbox:hover {
+		background-color: #e5e7eb;
+	}
+
+	.location-checkbox input[type='checkbox'] {
+		cursor: pointer;
+	}
+
+	.location-name {
+		font-size: 0.875rem;
+		color: var(--text-primary);
+	}
+
+	.filter-preview {
+		background-color: #eff6ff;
+		border: 1px solid #3b82f6;
+		border-radius: 0.375rem;
+		padding: 1rem;
+	}
+
+	.filter-preview strong {
+		color: var(--text-primary);
+		display: block;
+		margin-bottom: 0.5rem;
+	}
+
+	.filter-stats {
+		display: flex;
+		gap: 2rem;
+		flex-wrap: wrap;
+	}
+
+	.stat-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.875rem;
+		color: var(--text-secondary);
+	}
+
+	.stat-item .stat-value {
+		font-size: 1.25rem;
+		font-weight: 700;
+		color: var(--success-color);
+	}
+
+	.stat-item.filtered .stat-value {
+		color: #d97706;
+	}
+
+	.result-item.updated .result-value {
+		color: #3b82f6;
+	}
+
+	.result-item.filtered .result-value {
+		color: #d97706;
+	}
+
+	.result-item.excluded .result-value {
+		color: #6b7280;
+	}
+
 	@media (max-width: 768px) {
 		.header {
 			flex-direction: column;
@@ -545,6 +907,24 @@
 
 		.btn {
 			width: 100%;
+		}
+
+		.home-locations-panel {
+			margin-left: 0;
+		}
+
+		.locations-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.locations-header {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+
+		.filter-stats {
+			flex-direction: column;
+			gap: 0.5rem;
 		}
 	}
 </style>
