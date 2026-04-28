@@ -29,6 +29,10 @@ type RepositoryInterface interface {
 
 	// Referee history
 	GetRefereeMatchHistory(ctx context.Context, refereeID int64) ([]RefereeHistoryMatch, error)
+
+	// Assignment change tracking (Story 5.6)
+	MarkAssignmentAsViewed(ctx context.Context, matchID int64, refereeID int64) error
+	ResetViewedStatusForMatch(ctx context.Context, matchID int64) error
 }
 
 // Repository handles assignment data access
@@ -87,7 +91,7 @@ func (r *Repository) GetRoleSlot(ctx context.Context, matchID int64, roleType st
 
 	err := r.db.QueryRowContext(
 		ctx,
-		`SELECT id, match_id, role_type, assigned_referee_id, acknowledged, acknowledged_at, created_at, updated_at
+		`SELECT id, match_id, role_type, assigned_referee_id, acknowledged, acknowledged_at, updated_at, viewed_by_referee, created_at
 		 FROM match_roles
 		 WHERE match_id = $1 AND role_type = $2`,
 		matchID, roleType,
@@ -98,8 +102,9 @@ func (r *Repository) GetRoleSlot(ctx context.Context, matchID int64, roleType st
 		&slot.AssignedRefereeID,
 		&slot.Acknowledged,
 		&acknowledgedAt,
-		&slot.CreatedAt,
 		&slot.UpdatedAt,
+		&slot.ViewedByReferee,
+		&slot.CreatedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -130,7 +135,8 @@ func (r *Repository) UpdateRoleAssignment(ctx context.Context, roleID int64, ref
 		 SET assigned_referee_id = $1,
 		     acknowledged = false,
 		     acknowledged_at = NULL,
-		     updated_at = NOW()
+		     updated_at = NOW(),
+		     viewed_by_referee = false
 		 WHERE id = $2`,
 		nullableRefereeID, roleID,
 	)
@@ -275,7 +281,8 @@ func (r *Repository) GetRefereeMatchHistory(ctx context.Context, refereeID int64
 			m.id, m.event_name, m.team_name, m.age_group, m.match_date,
 			m.start_time, m.end_time, m.location, m.status,
 			m.archived, m.archived_at,
-			mr.role_type, mr.acknowledged, mr.acknowledged_at
+			mr.role_type, mr.acknowledged, mr.acknowledged_at,
+			mr.updated_at, mr.viewed_by_referee
 		FROM matches m
 		JOIN match_roles mr ON mr.match_id = m.id
 		WHERE mr.assigned_referee_id = $1
@@ -311,6 +318,8 @@ func (r *Repository) GetRefereeMatchHistory(ctx context.Context, refereeID int64
 			&h.RoleType,
 			&h.Acknowledged,
 			&acknowledgedAt,
+			&h.UpdatedAt,
+			&h.ViewedByReferee,
 		)
 		if err != nil {
 			continue
@@ -330,4 +339,39 @@ func (r *Repository) GetRefereeMatchHistory(ctx context.Context, refereeID int64
 	}
 
 	return history, nil
+}
+
+// MarkAssignmentAsViewed marks a referee's assignment as viewed
+// Story 5.6: Called when referee views match detail page
+func (r *Repository) MarkAssignmentAsViewed(ctx context.Context, matchID int64, refereeID int64) error {
+	_, err := r.db.ExecContext(
+		ctx,
+		`UPDATE match_roles
+		 SET viewed_by_referee = true
+		 WHERE match_id = $1 AND assigned_referee_id = $2`,
+		matchID, refereeID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to mark assignment as viewed: %w", err)
+	}
+	return nil
+}
+
+// ResetViewedStatusForMatch resets viewed_by_referee for all assignments on a match
+// Story 5.6: Called when match details (time/location) are updated via CSV import
+func (r *Repository) ResetViewedStatusForMatch(ctx context.Context, matchID int64) error {
+	_, err := r.db.ExecContext(
+		ctx,
+		`UPDATE match_roles
+		 SET viewed_by_referee = false,
+		     updated_at = NOW()
+		 WHERE match_id = $1 AND assigned_referee_id IS NOT NULL`,
+		matchID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to reset viewed status: %w", err)
+	}
+	return nil
 }

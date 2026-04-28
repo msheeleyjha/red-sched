@@ -35,6 +35,10 @@
 
 	onMount(async () => {
 		await loadData();
+		// Mark match as viewed (Story 5.6)
+		if (matchId && currentUser) {
+			markMatchAsViewed();
+		}
 	});
 
 	async function loadData() {
@@ -215,6 +219,20 @@
 		const ampm = hour >= 12 ? 'PM' : 'AM';
 		const hour12 = hour % 12 || 12;
 		return `${hour12}:${minutes} ${ampm}`;
+	}
+
+	// Story 5.6: Mark match as viewed when referee visits this page
+	async function markMatchAsViewed() {
+		try {
+			await fetch(`/api/matches/${matchId}/viewed`, {
+				method: 'POST',
+				credentials: 'include'
+			});
+			// Don't show error if this fails - it's not critical
+		} catch (err) {
+			// Silently fail - viewing indicator is not critical functionality
+			console.log('Failed to mark match as viewed:', err);
+		}
 	}
 </script>
 

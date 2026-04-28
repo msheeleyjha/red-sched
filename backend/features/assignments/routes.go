@@ -16,4 +16,7 @@ func (h *Handler) RegisterRoutes(r *mux.Router, authMiddleware func(http.Handler
 
 	// Get referee's match history (all assignments, active and archived)
 	r.HandleFunc("/api/referee/my-history", authMiddleware(h.GetRefereeHistory)).Methods("GET")
+
+	// Mark match as viewed (Story 5.6: Assignment Change Indicator)
+	r.HandleFunc("/api/matches/{match_id}/viewed", authMiddleware(h.MarkMatchAsViewed)).Methods("POST")
 }

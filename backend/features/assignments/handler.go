@@ -102,3 +102,28 @@ func (h *Handler) GetRefereeHistory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(history)
 }
+
+// MarkMatchAsViewed marks a referee's assignment as viewed
+// Story 5.6: Called when referee views match detail page
+func (h *Handler) MarkMatchAsViewed(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.GetUserFromContext(r.Context())
+	if !ok {
+		errors.WriteError(w, errors.NewUnauthorized("User not found in context"))
+		return
+	}
+
+	vars := mux.Vars(r)
+	matchID, err := strconv.ParseInt(vars["match_id"], 10, 64)
+	if err != nil {
+		errors.WriteError(w, errors.NewBadRequest("Invalid match ID"))
+		return
+	}
+
+	err = h.service.MarkMatchAsViewed(r.Context(), matchID, user.ID)
+	if err != nil {
+		errors.WriteError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

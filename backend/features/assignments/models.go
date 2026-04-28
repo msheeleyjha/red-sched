@@ -33,8 +33,9 @@ type RoleSlot struct {
 	AssignedRefereeID   *int64    `json:"assigned_referee_id"`
 	Acknowledged        bool      `json:"acknowledged"`
 	AcknowledgedAt      *time.Time `json:"acknowledged_at,omitempty"`
+	UpdatedAt           time.Time `json:"updated_at"`          // Story 5.6: Track when assignment was modified
+	ViewedByReferee     bool      `json:"viewed_by_referee"`  // Story 5.6: Track if referee has viewed update
 	CreatedAt           time.Time `json:"created_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 // ConflictMatch represents a conflicting match assignment
@@ -76,4 +77,6 @@ type RefereeHistoryMatch struct {
 	RoleType        string     `json:"role_type"`
 	Acknowledged    bool       `json:"acknowledged"`
 	AcknowledgedAt  *time.Time `json:"acknowledged_at,omitempty"`
+	UpdatedAt       time.Time  `json:"updated_at"`          // Story 5.6: When assignment was last modified
+	ViewedByReferee bool       `json:"viewed_by_referee"`  // Story 5.6: Whether referee has viewed update
 }

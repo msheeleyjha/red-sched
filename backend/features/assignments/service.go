@@ -159,3 +159,13 @@ func (s *Service) GetRefereeHistory(ctx context.Context, refereeID int64) ([]Ref
 
 	return history, nil
 }
+
+// MarkMatchAsViewed marks a referee's assignment as viewed
+// Story 5.6: Called when referee views match detail page
+func (s *Service) MarkMatchAsViewed(ctx context.Context, matchID int64, refereeID int64) error {
+	err := s.repo.MarkAssignmentAsViewed(ctx, matchID, refereeID)
+	if err != nil {
+		return errors.NewInternal("Failed to mark match as viewed", err)
+	}
+	return nil
+}

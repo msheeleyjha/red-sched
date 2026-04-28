@@ -34,6 +34,8 @@
 		acknowledged_at: string | null;
 		has_conflict?: boolean;
 		conflicting_matches?: ConflictingMatch[];
+		viewed_by_referee?: boolean;  // Story 5.6: Whether referee has viewed this match
+		updated_at?: string;           // Story 5.6: When assignment was last updated
 	}
 
 	interface GroupedMatches {
@@ -384,6 +386,11 @@
 											Assistant Referee 2
 										{/if}
 									</span>
+									{#if match.is_assigned && match.viewed_by_referee === false}
+										<span class="update-badge" title="Match details have been updated since you last viewed it">
+											📢 Updated
+										</span>
+									{/if}
 								</div>
 							</div>
 
@@ -786,6 +793,27 @@
 	.assigned-badge {
 		background: #3b82f6;
 		color: white;
+	}
+
+	.update-badge {
+		display: inline-block;
+		background: #f59e0b;
+		color: white;
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		font-size: 0.75rem;
+		font-weight: 700;
+		margin-left: 0.5rem;
+		animation: pulse 2s infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.7;
+		}
 	}
 
 	.match-card.day-unavailable-override {
