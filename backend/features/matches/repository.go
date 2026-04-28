@@ -14,6 +14,7 @@ type RepositoryInterface interface {
 	// Match CRUD operations
 	Create(ctx context.Context, match *Match) (*Match, error)
 	FindByID(ctx context.Context, id int64) (*Match, error)
+	FindByReferenceID(ctx context.Context, referenceID string) (*Match, error) // Story 6.2
 	List(ctx context.Context) ([]Match, error)
 	Update(ctx context.Context, id int64, updates map[string]interface{}) (*Match, error)
 
@@ -115,6 +116,47 @@ func (r *Repository) FindByID(ctx context.Context, id int64) (*Match, error) {
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to find match: %w", err)
+	}
+
+	return match, nil
+}
+
+// FindByReferenceID retrieves a match by reference_id (Story 6.2)
+func (r *Repository) FindByReferenceID(ctx context.Context, referenceID string) (*Match, error) {
+	query := `
+		SELECT id, event_name, team_name, age_group, match_date, start_time, end_time,
+		       location, description, reference_id, status, archived, archived_at, archived_by,
+		       created_by, created_at, updated_at
+		FROM matches
+		WHERE reference_id = $1 AND status != 'deleted'
+	`
+
+	match := &Match{}
+	err := r.db.QueryRowContext(ctx, query, referenceID).Scan(
+		&match.ID,
+		&match.EventName,
+		&match.TeamName,
+		&match.AgeGroup,
+		&match.MatchDate,
+		&match.StartTime,
+		&match.EndTime,
+		&match.Location,
+		&match.Description,
+		&match.ReferenceID,
+		&match.Status,
+		&match.Archived,
+		&match.ArchivedAt,
+		&match.ArchivedBy,
+		&match.CreatedBy,
+		&match.CreatedAt,
+		&match.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to find match by reference_id: %w", err)
 	}
 
 	return match, nil

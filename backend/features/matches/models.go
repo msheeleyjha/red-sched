@@ -95,7 +95,9 @@ type MatchUpdateRequest struct {
 
 // ImportResult contains the result of a match import operation
 type ImportResult struct {
-	Imported int      `json:"imported"`
+	Imported int      `json:"imported"` // Deprecated: use Created + Updated
+	Created  int      `json:"created"`  // Story 6.2: New matches created
+	Updated  int      `json:"updated"`  // Story 6.2: Existing matches updated
 	Skipped  int      `json:"skipped"`
 	Errors   []string `json:"errors"`
 }

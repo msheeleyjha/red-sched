@@ -191,8 +191,10 @@ func (s *Service) detectDuplicates(rows []CSVRow) []DuplicateMatchGroup {
 }
 
 // ImportMatches confirms and imports matches to database
+// Story 6.2: Now supports update-in-place for existing matches
 func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, currentUserID int64) (*ImportResult, error) {
-	imported := 0
+	created := 0
+	updated := 0
 	skipped := 0
 	errs := []string{}
 
@@ -224,42 +226,93 @@ func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, 
 		}
 		matchDate = parsedDate
 
-		// Create match object
-		match := &Match{
-			EventName:   row.EventName,
-			TeamName:    row.TeamName,
-			AgeGroup:    row.AgeGroup,
-			MatchDate:   matchDate,
-			StartTime:   row.StartTime,
-			EndTime:     row.EndTime,
-			Location:    row.Location,
-			Description: &row.Description,
-			ReferenceID: &row.ReferenceID,
-			Status:      "active",
-			CreatedBy:   currentUserID,
-		}
-
-		// Insert match
-		createdMatch, err := s.repo.Create(ctx, match)
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("Row %d: Database error: %s", row.RowNumber, err.Error()))
-			skipped++
-			continue
-		}
-
-		// Create role slots based on age group
-		if row.AgeGroup != nil {
-			err = s.CreateRoleSlotsForMatch(ctx, createdMatch.ID, *row.AgeGroup)
+		// Story 6.2: Check if match already exists by reference_id
+		var existingMatch *Match
+		if row.ReferenceID != "" {
+			existingMatch, err = s.repo.FindByReferenceID(ctx, row.ReferenceID)
 			if err != nil {
-				errs = append(errs, fmt.Sprintf("Row %d: Failed to create role slots: %s", row.RowNumber, err.Error()))
+				errs = append(errs, fmt.Sprintf("Row %d: Failed to check for existing match: %s", row.RowNumber, err.Error()))
+				skipped++
+				continue
 			}
 		}
 
-		imported++
+		if existingMatch != nil {
+			// Update existing match
+			updates := map[string]interface{}{
+				"event_name":  row.EventName,
+				"team_name":   row.TeamName,
+				"age_group":   row.AgeGroup,
+				"match_date":  matchDate,
+				"start_time":  row.StartTime,
+				"end_time":    row.EndTime,
+				"location":    row.Location,
+				"description": row.Description,
+			}
+
+			updatedMatch, err := s.repo.Update(ctx, existingMatch.ID, updates)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("Row %d: Failed to update match: %s", row.RowNumber, err.Error()))
+				skipped++
+				continue
+			}
+
+			// Story 6.2: Reset viewed status for assignments (Story 5.6 integration)
+			// This triggers the orange "Updated" badge for referees
+			err = s.resetViewedStatusForMatch(ctx, updatedMatch.ID)
+			if err != nil {
+				// Log but don't fail the import
+				errs = append(errs, fmt.Sprintf("Row %d: Warning - failed to reset viewed status: %s", row.RowNumber, err.Error()))
+			}
+
+			// Story 6.2: Log update to audit trail
+			err = s.repo.LogEdit(ctx, updatedMatch.ID, currentUserID, fmt.Sprintf("Updated via CSV import: %s", row.ReferenceID))
+			if err != nil {
+				// Log but don't fail the import
+				errs = append(errs, fmt.Sprintf("Row %d: Warning - failed to log update: %s", row.RowNumber, err.Error()))
+			}
+
+			updated++
+		} else {
+			// Create new match
+			match := &Match{
+				EventName:   row.EventName,
+				TeamName:    row.TeamName,
+				AgeGroup:    row.AgeGroup,
+				MatchDate:   matchDate,
+				StartTime:   row.StartTime,
+				EndTime:     row.EndTime,
+				Location:    row.Location,
+				Description: &row.Description,
+				ReferenceID: &row.ReferenceID,
+				Status:      "active",
+				CreatedBy:   currentUserID,
+			}
+
+			// Insert match
+			createdMatch, err := s.repo.Create(ctx, match)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("Row %d: Database error: %s", row.RowNumber, err.Error()))
+				skipped++
+				continue
+			}
+
+			// Create role slots based on age group
+			if row.AgeGroup != nil {
+				err = s.CreateRoleSlotsForMatch(ctx, createdMatch.ID, *row.AgeGroup)
+				if err != nil {
+					errs = append(errs, fmt.Sprintf("Row %d: Failed to create role slots: %s", row.RowNumber, err.Error()))
+				}
+			}
+
+			created++
+		}
 	}
 
 	return &ImportResult{
-		Imported: imported,
+		Imported: created + updated, // For backward compatibility
+		Created:  created,
+		Updated:  updated,
 		Skipped:  skipped,
 		Errors:   errs,
 	}, nil
@@ -738,6 +791,27 @@ func (s *Service) UnarchiveMatch(ctx context.Context, matchID int64) error {
 	err = s.repo.Unarchive(ctx, matchID)
 	if err != nil {
 		return errors.NewInternal("Failed to unarchive match", err)
+	}
+
+	return nil
+}
+
+// resetViewedStatusForMatch resets viewed_by_referee flag for all assignments on a match
+// Story 6.2: Called when match details are updated via CSV import
+// This triggers the orange "Updated" badge for referees (Story 5.6)
+func (s *Service) resetViewedStatusForMatch(ctx context.Context, matchID int64) error {
+	// This would normally call the assignments repository
+	// For now, we'll execute the SQL directly since we're in the matches service
+	// In a production system, you might inject the assignments repository
+
+	// Execute raw SQL to avoid circular dependency
+	query := `UPDATE match_roles
+	          SET viewed_by_referee = false, updated_at = NOW()
+	          WHERE match_id = $1 AND assigned_referee_id IS NOT NULL`
+
+	_, err := s.repo.(*Repository).db.ExecContext(ctx, query, matchID)
+	if err != nil {
+		return fmt.Errorf("failed to reset viewed status: %w", err)
 	}
 
 	return nil
