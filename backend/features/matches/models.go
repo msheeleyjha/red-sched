@@ -64,8 +64,9 @@ type CSVRow struct {
 
 // ImportPreviewResponse contains parsed rows and any duplicates found
 type ImportPreviewResponse struct {
-	Rows       []CSVRow              `json:"rows"`
-	Duplicates []DuplicateMatchGroup `json:"duplicates"`
+	Rows            []CSVRow              `json:"rows"`
+	Duplicates      []DuplicateMatchGroup `json:"duplicates"`
+	UniqueLocations []string              `json:"unique_locations"` // For filter configuration UI
 }
 
 // DuplicateMatchGroup represents a set of duplicate matches

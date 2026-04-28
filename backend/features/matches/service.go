@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime/multipart"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -176,9 +177,26 @@ func (s *Service) ParseCSV(file multipart.File, filename string) (*ImportPreview
 		}
 	}
 
+	// Extract unique locations for filter configuration UI
+	locationMap := make(map[string]bool)
+	for _, row := range rows {
+		if row.Location != "" && row.Error == nil {
+			locationMap[row.Location] = true
+		}
+	}
+
+	uniqueLocations := make([]string, 0, len(locationMap))
+	for location := range locationMap {
+		uniqueLocations = append(uniqueLocations, location)
+	}
+
+	// Sort locations alphabetically for consistent UI display
+	sort.Strings(uniqueLocations)
+
 	response := &ImportPreviewResponse{
-		Rows:       rows,
-		Duplicates: duplicates,
+		Rows:            rows,
+		Duplicates:      duplicates,
+		UniqueLocations: uniqueLocations,
 	}
 
 	return response, nil
