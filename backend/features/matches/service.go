@@ -135,8 +135,11 @@ func (s *Service) ParseCSV(file multipart.File, filename string) (*ImportPreview
 	duplicates := s.detectDuplicates(rows)
 
 	// Story 6.1: Reject file if duplicate reference_ids found
+	// Story 6.3: Reject file if same-match duplicates found
 	if len(duplicates) > 0 {
-		// Build error message listing duplicate reference_ids
+		errorMessages := make([]string, 0)
+
+		// Check for duplicate reference_ids
 		duplicateRefIDs := make([]string, 0)
 		for _, dup := range duplicates {
 			if dup.Signal == "reference_id" && len(dup.Matches) > 0 {
@@ -149,8 +152,26 @@ func (s *Service) ParseCSV(file multipart.File, filename string) (*ImportPreview
 		}
 
 		if len(duplicateRefIDs) > 0 {
-			errMsg := fmt.Sprintf("CSV file contains duplicate reference_id values: %s. Please remove duplicates and re-upload.",
-				strings.Join(duplicateRefIDs, ", "))
+			errorMessages = append(errorMessages,
+				fmt.Sprintf("Duplicate reference_id values: %s", strings.Join(duplicateRefIDs, ", ")))
+		}
+
+		// Check for same-match duplicates
+		sameMatchCount := 0
+		for _, dup := range duplicates {
+			if dup.Signal == "same_match" {
+				sameMatchCount++
+			}
+		}
+
+		if sameMatchCount > 0 {
+			errorMessages = append(errorMessages,
+				fmt.Sprintf("%d duplicate match(es) detected (same team, date, and time with different reference_ids)", sameMatchCount))
+		}
+
+		if len(errorMessages) > 0 {
+			errMsg := fmt.Sprintf("CSV file contains duplicates: %s. Please remove duplicates and re-upload.",
+				strings.Join(errorMessages, "; "))
 			return nil, errors.NewBadRequest(errMsg)
 		}
 	}
@@ -184,8 +205,41 @@ func (s *Service) detectDuplicates(rows []CSVRow) []DuplicateMatchGroup {
 		}
 	}
 
-	// Signal B: Same date + start time + location (different reference_id)
-	// TODO: Implement in future story
+	// Signal B: Same date + team + start time (Story 6.3: Same-Match Detection)
+	// This catches duplicates even if reference_id is different or missing
+	matchKey := func(row CSVRow) string {
+		// Create unique key: date|team|time
+		return fmt.Sprintf("%s|%s|%s", row.StartDate, row.TeamName, row.StartTime)
+	}
+
+	matchMap := make(map[string][]CSVRow)
+	for _, row := range rows {
+		if row.Error == nil {
+			key := matchKey(row)
+			matchMap[key] = append(matchMap[key], row)
+		}
+	}
+
+	for _, matches := range matchMap {
+		if len(matches) > 1 {
+			// Only flag as duplicate if they have different reference_ids
+			// (same reference_id is handled by Signal A)
+			refIDs := make(map[string]bool)
+			for _, m := range matches {
+				if m.ReferenceID != "" {
+					refIDs[m.ReferenceID] = true
+				}
+			}
+
+			// If multiple reference_ids or mix of empty/non-empty, it's a same-match duplicate
+			if len(refIDs) > 1 || (len(refIDs) == 1 && len(matches) > len(refIDs)) {
+				duplicates = append(duplicates, DuplicateMatchGroup{
+					Signal:  "same_match",
+					Matches: matches,
+				})
+			}
+		}
+	}
 
 	return duplicates
 }
