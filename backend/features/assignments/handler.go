@@ -84,3 +84,21 @@ func (h *Handler) CheckConflicts(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
 }
+
+// GetRefereeHistory returns all matches assigned to the current referee
+func (h *Handler) GetRefereeHistory(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.GetUserFromContext(r.Context())
+	if !ok {
+		errors.WriteError(w, errors.NewUnauthorized("User not found in context"))
+		return
+	}
+
+	history, err := h.service.GetRefereeHistory(r.Context(), user.ID)
+	if err != nil {
+		errors.WriteError(w, err)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(history)
+}

@@ -149,3 +149,13 @@ func (s *Service) CheckConflicts(ctx context.Context, matchID int64, refereeID i
 		Conflicts:   conflicts,
 	}, nil
 }
+
+// GetRefereeHistory retrieves all matches assigned to a referee (active and archived)
+func (s *Service) GetRefereeHistory(ctx context.Context, refereeID int64) ([]RefereeHistoryMatch, error) {
+	history, err := s.repo.GetRefereeMatchHistory(ctx, refereeID)
+	if err != nil {
+		return nil, errors.NewInternal("Failed to get referee history", err)
+	}
+
+	return history, nil
+}

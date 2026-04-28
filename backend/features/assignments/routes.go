@@ -13,4 +13,7 @@ func (h *Handler) RegisterRoutes(r *mux.Router, authMiddleware func(http.Handler
 
 	// Check for conflicting assignments - requires manage_assignments permission
 	r.HandleFunc("/api/matches/{match_id}/conflicts", authMiddleware(requirePermission("manage_assignments", h.CheckConflicts))).Methods("GET")
+
+	// Get referee's match history (all assignments, active and archived)
+	r.HandleFunc("/api/referee/my-history", authMiddleware(h.GetRefereeHistory)).Methods("GET")
 }

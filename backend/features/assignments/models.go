@@ -59,3 +59,21 @@ type MatchTimeWindow struct {
 	Start   time.Time
 	End     time.Time
 }
+
+// RefereeHistoryMatch represents a match in a referee's history
+type RefereeHistoryMatch struct {
+	MatchID         int64      `json:"match_id"`
+	EventName       string     `json:"event_name"`
+	TeamName        string     `json:"team_name"`
+	AgeGroup        *string    `json:"age_group,omitempty"`
+	MatchDate       time.Time  `json:"match_date"`
+	StartTime       string     `json:"start_time"`
+	EndTime         string     `json:"end_time"`
+	Location        string     `json:"location"`
+	Status          string     `json:"status"`
+	Archived        bool       `json:"archived"`
+	ArchivedAt      *time.Time `json:"archived_at,omitempty"`
+	RoleType        string     `json:"role_type"`
+	Acknowledged    bool       `json:"acknowledged"`
+	AcknowledgedAt  *time.Time `json:"acknowledged_at,omitempty"`
+}

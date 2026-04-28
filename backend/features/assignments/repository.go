@@ -26,6 +26,9 @@ type RepositoryInterface interface {
 
 	// Assignment history
 	LogAssignment(ctx context.Context, history *AssignmentHistory) error
+
+	// Referee history
+	GetRefereeMatchHistory(ctx context.Context, refereeID int64) ([]RefereeHistoryMatch, error)
 }
 
 // Repository handles assignment data access
@@ -262,4 +265,69 @@ func (r *Repository) LogAssignment(ctx context.Context, history *AssignmentHisto
 		return fmt.Errorf("failed to log assignment: %w", err)
 	}
 	return nil
+}
+
+// GetRefereeMatchHistory retrieves all matches (active and archived) assigned to a referee
+func (r *Repository) GetRefereeMatchHistory(ctx context.Context, refereeID int64) ([]RefereeHistoryMatch, error) {
+	rows, err := r.db.QueryContext(
+		ctx,
+		`SELECT
+			m.id, m.event_name, m.team_name, m.age_group, m.match_date,
+			m.start_time, m.end_time, m.location, m.status,
+			m.archived, m.archived_at,
+			mr.role_type, mr.acknowledged, mr.acknowledged_at
+		FROM matches m
+		JOIN match_roles mr ON mr.match_id = m.id
+		WHERE mr.assigned_referee_id = $1
+		  AND m.status != 'deleted'
+		ORDER BY m.match_date DESC, m.start_time DESC`,
+		refereeID,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get referee match history: %w", err)
+	}
+	defer rows.Close()
+
+	history := []RefereeHistoryMatch{}
+	for rows.Next() {
+		var h RefereeHistoryMatch
+		var ageGroup sql.NullString
+		var archivedAt sql.NullTime
+		var acknowledgedAt sql.NullTime
+
+		err := rows.Scan(
+			&h.MatchID,
+			&h.EventName,
+			&h.TeamName,
+			&ageGroup,
+			&h.MatchDate,
+			&h.StartTime,
+			&h.EndTime,
+			&h.Location,
+			&h.Status,
+			&h.Archived,
+			&archivedAt,
+			&h.RoleType,
+			&h.Acknowledged,
+			&acknowledgedAt,
+		)
+		if err != nil {
+			continue
+		}
+
+		if ageGroup.Valid {
+			h.AgeGroup = &ageGroup.String
+		}
+		if archivedAt.Valid {
+			h.ArchivedAt = &archivedAt.Time
+		}
+		if acknowledgedAt.Valid {
+			h.AcknowledgedAt = &acknowledgedAt.Time
+		}
+
+		history = append(history, h)
+	}
+
+	return history, nil
 }
