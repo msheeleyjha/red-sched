@@ -1,11 +1,16 @@
 # Migration 014 Fix - Database Cleanup Instructions
 
 ## Problem
-Migration 014 failed because it tried to add an `updated_at` column to the `match_roles` table, but that column already existed from the original table creation in migration 002.
+Migration 014 failed for TWO reasons:
+
+1. **Duplicate column**: Tried to add an `updated_at` column that already existed from migration 002
+2. **Wrong table name**: Referenced `match_roles` table, but it was renamed to `assignments` in migration 009
 
 This left the database in a "dirty" state at version 14.
 
-## Root Cause
+## Root Causes
+
+### Issue 1: Duplicate Column
 **Migration 014 (before fix):**
 ```sql
 ALTER TABLE match_roles
@@ -23,17 +28,44 @@ CREATE TABLE match_roles (
 );
 ```
 
+### Issue 2: Wrong Table/Column Names
+**Migration 014 (before fix):**
+```sql
+ALTER TABLE match_roles  -- ❌ Table renamed to 'assignments' in migration 009
+ADD COLUMN viewed_by_referee BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE INDEX idx_match_roles_viewed ON match_roles(assigned_referee_id, viewed_by_referee);
+--                                                   ^^^^^^^^^^^^^^^^^^^ ❌ Column renamed to 'referee_id' in migration 009
+```
+
+**Migration 009 renamed:**
+- `match_roles` → `assignments`
+- `role_type` → `position`
+- `assigned_referee_id` → `referee_id`
+
 ## Fix Applied
-The migration script has been corrected to only add the `viewed_by_referee` column:
+The migration script has been corrected to:
+1. Remove the duplicate `updated_at` column addition
+2. Use the correct table name `assignments` (renamed in migration 009)
+3. Use the correct column name `referee_id` (renamed in migration 009)
 
 **Migration 014 (after fix):**
 ```sql
--- Note: updated_at already exists from migration 002_matches_schema.up.sql
+-- Note: Table was renamed from match_roles to assignments in migration 009
+-- Note: updated_at already exists from the original table creation in migration 002
+-- Note: assigned_referee_id was renamed to referee_id in migration 009
 -- We only need to add the viewed_by_referee column
 
-ALTER TABLE match_roles
+ALTER TABLE assignments
 ADD COLUMN viewed_by_referee BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Create index for efficient querying of unviewed assignments
+CREATE INDEX idx_assignments_viewed ON assignments(referee_id, viewed_by_referee) 
+WHERE viewed_by_referee = FALSE;
 ```
+
+**Service layer also fixed:**
+The `resetViewedStatusForMatch()` method in `service.go` was also updated to use the correct table and column names.
 
 ## Database Cleanup Steps
 
@@ -66,7 +98,7 @@ Check if the column exists:
 ```sql
 SELECT column_name 
 FROM information_schema.columns 
-WHERE table_name = 'match_roles' 
+WHERE table_name = 'assignments' 
   AND column_name = 'viewed_by_referee';
 ```
 
@@ -114,30 +146,30 @@ You should see:
       15 | false  <-- If Epic 6 migrations ran
 ```
 
-Verify the match_roles table has the correct columns:
+Verify the assignments table has the correct columns:
 ```sql
-\d match_roles
+\d assignments
 ```
 
 Expected columns:
 - `id`
 - `match_id`
-- `role_type`
-- `assigned_referee_id`
+- `position` (renamed from role_type in migration 009)
+- `referee_id` (renamed from assigned_referee_id in migration 009)
 - `created_at`
 - `updated_at` (from migration 002)
 - `viewed_by_referee` (from migration 014 - fixed)
 
 And the index:
 ```sql
-\di idx_match_roles_viewed
+\di idx_assignments_viewed
 ```
 
 Should show:
 ```
- Schema |          Name           | Type  |  Owner   |    Table    
---------+-------------------------+-------+----------+-------------
- public | idx_match_roles_viewed  | index | your_user | match_roles
+ Schema |          Name           | Type  |  Owner   |    Table     
+--------+-------------------------+-------+----------+--------------
+ public | idx_assignments_viewed  | index | your_user | assignments
 ```
 
 ### Step 5: Continue with remaining migrations
@@ -159,16 +191,22 @@ This will run migration 015 (excluded_reference_ids table).
 ## Prevention
 
 This issue occurred because:
-1. Migration 014 was created without checking the original table schema
-2. The `updated_at` column already existed from the initial table creation
+1. Migration 014 was created without checking the original table schema (duplicate `updated_at` column)
+2. Migration 014 was created without checking migration history (table renamed in migration 009)
+3. Service code was not updated when migration was created
 
-**Lesson learned:** Always check the original table definition before adding columns in migrations.
+**Lessons learned:** 
+- Always check the complete migration history before creating new migrations
+- Verify table and column names match the current schema (after all previous migrations)
+- Update application code that references the same database objects
 
 ## Files Changed
-- `backend/migrations/014_assignment_change_tracking.up.sql` - Removed duplicate updated_at column addition
-- `backend/migrations/014_assignment_change_tracking.down.sql` - Updated to only drop viewed_by_referee column
+- `backend/migrations/014_assignment_change_tracking.up.sql` - Removed duplicate updated_at, fixed table/column names
+- `backend/migrations/014_assignment_change_tracking.down.sql` - Updated to use correct table/column names
+- `backend/features/matches/service.go` - Fixed resetViewedStatusForMatch() to use correct table/column names
 
-## Commit
+## Commits
 ```
 f47509d Fix migration 014: Remove duplicate updated_at column addition
+635f93a Fix migration 014: Use correct table and column names from migration 009
 ```
