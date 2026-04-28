@@ -6,6 +6,7 @@ referee-scheduler
 *.dll
 *.so
 *.dylib
+bin/
 
 # Test binary
 *.test
