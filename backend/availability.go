@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/msheeley/referee-scheduler/features/eligibility"
+	"github.com/msheeley/referee-scheduler/shared/middleware"
 )
 
 // ConflictingMatch represents another assignment that conflicts with this one
@@ -44,7 +45,11 @@ type MatchForReferee struct {
 
 // getEligibleMatchesForRefereeHandler returns all upcoming matches that the current referee is eligible for
 func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request) {
-	user := r.Context().Value(userContextKey).(*User)
+	user, ok := middleware.GetUserFromContext(r.Context())
+	if !ok {
+		http.Error(w, "Unauthorized - user not found in context", http.StatusUnauthorized)
+		return
+	}
 
 	// Check if user has completed their profile
 	var hasProfile bool

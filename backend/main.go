@@ -142,17 +142,17 @@ func main() {
 	r.HandleFunc("/api/auth/google/callback", googleCallbackHandler).Methods("GET")
 	r.HandleFunc("/api/auth/logout", logoutHandler).Methods("POST")
 
-	// Feature routes
-	usersHandler.RegisterRoutes(r, authMiddleware)
-	matchesHandler.RegisterRoutes(r, authMiddleware, requirePermission)
-	assignmentsHandler.RegisterRoutes(r, authMiddleware, requirePermission)
-	acknowledgmentHandler.RegisterRoutes(r, authMiddleware)
-	refereesHandler.RegisterRoutes(r, authMiddleware, requirePermission)
-	availabilityHandler.RegisterRoutes(r, authMiddleware)
-	eligibilityHandler.RegisterRoutes(r, authMiddleware, requirePermission)
+	// Feature routes (using new AuthMiddleware)
+	usersHandler.RegisterRoutes(r, authMW.RequireAuth)
+	matchesHandler.RegisterRoutes(r, authMW.RequireAuth, requirePermission)
+	assignmentsHandler.RegisterRoutes(r, authMW.RequireAuth, requirePermission)
+	acknowledgmentHandler.RegisterRoutes(r, authMW.RequireAuth)
+	refereesHandler.RegisterRoutes(r, authMW.RequireAuth, requirePermission)
+	availabilityHandler.RegisterRoutes(r, authMW.RequireAuth)
+	eligibilityHandler.RegisterRoutes(r, authMW.RequireAuth, requirePermission)
 
 	// TODO: Migrate this route to availability feature
-	r.HandleFunc("/api/referee/matches", authMiddleware(getEligibleMatchesForRefereeHandler)).Methods("GET")
+	r.HandleFunc("/api/referee/matches", authMW.RequireAuth(getEligibleMatchesForRefereeHandler)).Methods("GET")
 
 	// Epic 1: RBAC Admin routes (requires can_assign_roles permission)
 	r.HandleFunc("/api/admin/users/{id}/roles", requirePermission("can_assign_roles", assignRoleToUser)).Methods("POST")
@@ -278,31 +278,4 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "logged out"})
 }
 
-// Middleware
-func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		session, err := sessionStore.Get(r, "auth-session")
-		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		userID, ok := session.Values["user_id"].(int64)
-		if !ok {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		// Get user from database
-		user, err := getUserByID(userID)
-		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		// Add user to context
-		ctx := r.Context()
-		ctx = contextWithUser(ctx, user)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	}
-}
+// Note: Old authMiddleware function removed - now using authMW.RequireAuth from shared/middleware
