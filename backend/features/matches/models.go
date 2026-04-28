@@ -111,6 +111,48 @@ type ImportResult struct {
 	Filtered int      `json:"filtered"` // Story 6.4: Rows filtered (practices/away)
 	Excluded int      `json:"excluded"` // Story 6.5: Rows excluded (reference_id in exclusion list)
 	Errors   []string `json:"errors"`
+
+	// Story 6.6: Detailed breakdown for import summary report
+	CreatedMatches  []ImportedMatchSummary `json:"created_matches,omitempty"`
+	UpdatedMatches  []ImportedMatchSummary `json:"updated_matches,omitempty"`
+	SkippedRows     []SkippedRowSummary    `json:"skipped_rows,omitempty"`
+	FilteredRows    []FilteredRowSummary   `json:"filtered_rows,omitempty"`
+	ExcludedRows    []ExcludedRowSummary   `json:"excluded_rows,omitempty"`
+}
+
+// ImportedMatchSummary contains details about a created or updated match (Story 6.6)
+type ImportedMatchSummary struct {
+	ReferenceID string `json:"reference_id"`
+	TeamName    string `json:"team_name"`
+	MatchDate   string `json:"match_date"`
+	StartTime   string `json:"start_time"`
+	Location    string `json:"location"`
+	Action      string `json:"action"` // "created" or "updated"
+}
+
+// SkippedRowSummary contains details about a skipped row (Story 6.6)
+type SkippedRowSummary struct {
+	RowNumber   int    `json:"row_number"`
+	ReferenceID string `json:"reference_id"`
+	TeamName    string `json:"team_name"`
+	Error       string `json:"error"`
+}
+
+// FilteredRowSummary contains details about a filtered row (Story 6.6)
+type FilteredRowSummary struct {
+	RowNumber   int    `json:"row_number"`
+	ReferenceID string `json:"reference_id"`
+	TeamName    string `json:"team_name"`
+	MatchDate   string `json:"match_date"`
+	Reason      string `json:"reason"` // "Practice match" or "Away match"
+}
+
+// ExcludedRowSummary contains details about an excluded row (Story 6.6)
+type ExcludedRowSummary struct {
+	RowNumber   int    `json:"row_number"`
+	ReferenceID string `json:"reference_id"`
+	TeamName    string `json:"team_name"`
+	MatchDate   string `json:"match_date"`
 }
 
 // ExcludedReferenceID represents a permanently excluded match reference ID (Story 6.5)

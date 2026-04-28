@@ -315,6 +315,7 @@ func (s *Service) isAwayMatch(location string, homeLocations []string) bool {
 // Story 6.2: Now supports update-in-place for existing matches
 // Story 6.4: Now supports filtering practices and away matches
 // Story 6.5: Now skips excluded reference IDs
+// Story 6.6: Now provides detailed import summary
 func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, currentUserID int64) (*ImportResult, error) {
 	created := 0
 	updated := 0
@@ -322,6 +323,13 @@ func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, 
 	filtered := 0
 	excluded := 0
 	errs := []string{}
+
+	// Story 6.6: Detailed summaries for import report
+	createdMatches := []ImportedMatchSummary{}
+	updatedMatches := []ImportedMatchSummary{}
+	skippedRows := []SkippedRowSummary{}
+	filteredRows := []FilteredRowSummary{}
+	excludedRows := []ExcludedRowSummary{}
 
 	// Load US Eastern timezone
 	loc, err := getEasternLocation()
@@ -336,12 +344,25 @@ func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, 
 		// Skip rows with unresolved errors
 		if row.Error != nil {
 			skipped++
+			skippedRows = append(skippedRows, SkippedRowSummary{
+				RowNumber:   row.RowNumber,
+				ReferenceID: row.ReferenceID,
+				TeamName:    row.TeamName,
+				Error:       *row.Error,
+			})
 			continue
 		}
 
 		// Story 6.4: Skip filtered rows
 		if row.FilterReason != nil {
 			filtered++
+			filteredRows = append(filteredRows, FilteredRowSummary{
+				RowNumber:   row.RowNumber,
+				ReferenceID: row.ReferenceID,
+				TeamName:    row.TeamName,
+				MatchDate:   row.StartDate,
+				Reason:      *row.FilterReason,
+			})
 			continue
 		}
 
@@ -349,12 +370,25 @@ func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, 
 		if row.ReferenceID != "" {
 			isExcluded, err := s.repo.IsReferenceIDExcluded(ctx, row.ReferenceID)
 			if err != nil {
-				errs = append(errs, fmt.Sprintf("Row %d: Failed to check exclusion: %s", row.RowNumber, err.Error()))
+				errMsg := fmt.Sprintf("Failed to check exclusion: %s", err.Error())
+				errs = append(errs, fmt.Sprintf("Row %d: %s", row.RowNumber, errMsg))
 				skipped++
+				skippedRows = append(skippedRows, SkippedRowSummary{
+					RowNumber:   row.RowNumber,
+					ReferenceID: row.ReferenceID,
+					TeamName:    row.TeamName,
+					Error:       errMsg,
+				})
 				continue
 			}
 			if isExcluded {
 				excluded++
+				excludedRows = append(excludedRows, ExcludedRowSummary{
+					RowNumber:   row.RowNumber,
+					ReferenceID: row.ReferenceID,
+					TeamName:    row.TeamName,
+					MatchDate:   row.StartDate,
+				})
 				continue
 			}
 		}
@@ -421,6 +455,16 @@ func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, 
 			}
 
 			updated++
+
+			// Story 6.6: Add to updated matches summary
+			updatedMatches = append(updatedMatches, ImportedMatchSummary{
+				ReferenceID: row.ReferenceID,
+				TeamName:    row.TeamName,
+				MatchDate:   row.StartDate,
+				StartTime:   row.StartTime,
+				Location:    row.Location,
+				Action:      "updated",
+			})
 		} else {
 			// Create new match
 			match := &Match{
@@ -454,6 +498,16 @@ func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, 
 			}
 
 			created++
+
+			// Story 6.6: Add to created matches summary
+			createdMatches = append(createdMatches, ImportedMatchSummary{
+				ReferenceID: row.ReferenceID,
+				TeamName:    row.TeamName,
+				MatchDate:   row.StartDate,
+				StartTime:   row.StartTime,
+				Location:    row.Location,
+				Action:      "created",
+			})
 		}
 	}
 
@@ -465,6 +519,13 @@ func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, 
 		Filtered: filtered, // Story 6.4
 		Excluded: excluded, // Story 6.5
 		Errors:   errs,
+
+		// Story 6.6: Detailed summaries for import report
+		CreatedMatches: createdMatches,
+		UpdatedMatches: updatedMatches,
+		SkippedRows:    skippedRows,
+		FilteredRows:   filteredRows,
+		ExcludedRows:   excludedRows,
 	}, nil
 }
 
