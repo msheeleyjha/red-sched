@@ -29,6 +29,9 @@ type Config struct {
 
 	// Audit
 	AuditRetentionDays int
+
+	// Match Archival
+	MatchRetentionDays int
 }
 
 // Load reads configuration from environment variables
@@ -43,6 +46,7 @@ func Load() *Config {
 		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", ""),
 		FrontendURL:        getEnv("FRONTEND_URL", "http://localhost:3000"),
 		AuditRetentionDays: getEnvInt("AUDIT_RETENTION_DAYS", 730),
+		MatchRetentionDays: getEnvInt("MATCH_RETENTION_DAYS", 730),
 	}
 
 	// Validate required fields

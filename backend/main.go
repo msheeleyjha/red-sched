@@ -26,12 +26,13 @@ import (
 )
 
 var (
-	cfg              *config.Config
-	db               *sql.DB
-	sessionStore     *sessions.CookieStore
-	oauth2Config     *oauth2.Config
-	auditLogger      *AuditLogger
-	retentionService *AuditRetentionService
+	cfg                     *config.Config
+	db                      *sql.DB
+	sessionStore            *sessions.CookieStore
+	oauth2Config            *oauth2.Config
+	auditLogger             *AuditLogger
+	retentionService        *AuditRetentionService
+	matchRetentionService   *MatchRetentionService
 
 	// Middleware instances
 	authMW *middleware.AuthMiddleware
@@ -70,6 +71,12 @@ func main() {
 	retentionService.Start()
 	defer retentionService.Stop()
 	log.Println("Audit retention service started")
+
+	// Initialize match retention service
+	matchRetentionService = NewMatchRetentionService(db, cfg.MatchRetentionDays)
+	matchRetentionService.Start()
+	defer matchRetentionService.Stop()
+	log.Println("Match retention service started")
 
 	// Initialize session store
 	sessionStore = sessions.NewCookieStore([]byte(cfg.SessionSecret))
@@ -165,6 +172,9 @@ func main() {
 	r.HandleFunc("/api/admin/audit-logs", requirePermission("can_view_audit_logs", getAuditLogsHandler)).Methods("GET")
 	r.HandleFunc("/api/admin/audit-logs/export", requirePermission("can_view_audit_logs", exportAuditLogsHandler)).Methods("GET")
 	r.HandleFunc("/api/admin/audit-logs/purge", requirePermission("can_view_audit_logs", purgeAuditLogsHandler)).Methods("POST")
+
+	// Epic 4: Match Retention routes (requires can_view_audit_logs permission)
+	r.HandleFunc("/api/admin/matches/purge", requirePermission("can_view_audit_logs", purgeArchivedMatchesHandler)).Methods("POST")
 
 	// Setup CORS
 	corsHandler := middleware.NewCORSHandler(cfg.FrontendURL)
@@ -276,6 +286,29 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "logged out"})
+}
+
+// purgeArchivedMatchesHandler manually triggers archived match purge (admin only)
+// POST /api/admin/matches/purge
+func purgeArchivedMatchesHandler(w http.ResponseWriter, r *http.Request) {
+	// Trigger purge via the match retention service
+	if matchRetentionService == nil {
+		http.Error(w, "Match retention service not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	log.Println("Manual archived match purge triggered by admin")
+
+	result, err := matchRetentionService.PurgeOldMatches()
+	if err != nil {
+		log.Printf("Error during manual match purge: %v", err)
+		http.Error(w, "Failed to purge archived matches", http.StatusInternalServerError)
+		return
+	}
+
+	// Return purge statistics
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 // Note: Old authMiddleware function removed - now using authMW.RequireAuth from shared/middleware
