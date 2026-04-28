@@ -3,6 +3,7 @@ package matches
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -368,14 +369,22 @@ func (r *Repository) RoleExists(ctx context.Context, matchID int64, roleType str
 	return exists, nil
 }
 
-// LogEdit logs a match edit to assignment_history
-// Note: Column renamed from role_type to position in migration 009
+// LogEdit logs a match edit to audit_logs
+// Note: Changed from assignment_history to audit_logs to support longer descriptions
+// assignment_history.action is VARCHAR(20), too small for descriptions like "Updated via CSV import: 12345"
 func (r *Repository) LogEdit(ctx context.Context, matchID int64, actorID int64, changeDescription string) error {
-	_, err := r.db.ExecContext(
+	// Properly encode the description as JSON to avoid injection issues
+	newValues := map[string]string{"description": changeDescription}
+	newValuesJSON, err := json.Marshal(newValues)
+	if err != nil {
+		return fmt.Errorf("failed to marshal audit log values: %w", err)
+	}
+
+	_, err = r.db.ExecContext(
 		ctx,
-		`INSERT INTO assignment_history (match_id, position, action, actor_id)
-		 VALUES ($1, 'match_edit', $2, $3)`,
-		matchID, changeDescription, actorID,
+		`INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, new_values, created_at)
+		 VALUES ($1, 'update', 'match', $2, $3, NOW())`,
+		actorID, matchID, newValuesJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to log edit: %w", err)
