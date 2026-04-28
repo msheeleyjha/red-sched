@@ -314,11 +314,13 @@ func (s *Service) isAwayMatch(location string, homeLocations []string) bool {
 // ImportMatches confirms and imports matches to database
 // Story 6.2: Now supports update-in-place for existing matches
 // Story 6.4: Now supports filtering practices and away matches
+// Story 6.5: Now skips excluded reference IDs
 func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, currentUserID int64) (*ImportResult, error) {
 	created := 0
 	updated := 0
 	skipped := 0
 	filtered := 0
+	excluded := 0
 	errs := []string{}
 
 	// Load US Eastern timezone
@@ -341,6 +343,20 @@ func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, 
 		if row.FilterReason != nil {
 			filtered++
 			continue
+		}
+
+		// Story 6.5: Check if reference_id is excluded
+		if row.ReferenceID != "" {
+			isExcluded, err := s.repo.IsReferenceIDExcluded(ctx, row.ReferenceID)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("Row %d: Failed to check exclusion: %s", row.RowNumber, err.Error()))
+				skipped++
+				continue
+			}
+			if isExcluded {
+				excluded++
+				continue
+			}
 		}
 
 		// Parse date in Eastern Time
@@ -447,6 +463,7 @@ func (s *Service) ImportMatches(ctx context.Context, req *ImportConfirmRequest, 
 		Updated:  updated,
 		Skipped:  skipped,
 		Filtered: filtered, // Story 6.4
+		Excluded: excluded, // Story 6.5
 		Errors:   errs,
 	}, nil
 }
@@ -948,4 +965,42 @@ func (s *Service) resetViewedStatusForMatch(ctx context.Context, matchID int64) 
 	}
 
 	return nil
+}
+
+// AddExcludedReferenceID adds a reference_id to the permanent exclusion list (Story 6.5)
+func (s *Service) AddExcludedReferenceID(ctx context.Context, referenceID string, reason *string, userID int64) error {
+	if referenceID == "" {
+		return errors.NewBadRequest("Reference ID cannot be empty")
+	}
+
+	err := s.repo.AddExcludedReferenceID(ctx, referenceID, reason, userID)
+	if err != nil {
+		return errors.NewInternal("Failed to add excluded reference ID", err)
+	}
+
+	return nil
+}
+
+// RemoveExcludedReferenceID removes a reference_id from the exclusion list (Story 6.5)
+func (s *Service) RemoveExcludedReferenceID(ctx context.Context, referenceID string) error {
+	if referenceID == "" {
+		return errors.NewBadRequest("Reference ID cannot be empty")
+	}
+
+	err := s.repo.RemoveExcludedReferenceID(ctx, referenceID)
+	if err != nil {
+		return errors.NewNotFound("Excluded reference ID")
+	}
+
+	return nil
+}
+
+// ListExcludedReferenceIDs retrieves all excluded reference IDs (Story 6.5)
+func (s *Service) ListExcludedReferenceIDs(ctx context.Context) ([]ExcludedReferenceID, error) {
+	excluded, err := s.repo.ListExcludedReferenceIDs(ctx)
+	if err != nil {
+		return nil, errors.NewInternal("Failed to list excluded reference IDs", err)
+	}
+
+	return excluded, nil
 }

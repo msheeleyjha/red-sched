@@ -109,5 +109,23 @@ type ImportResult struct {
 	Updated  int      `json:"updated"`  // Story 6.2: Existing matches updated
 	Skipped  int      `json:"skipped"`  // Rows skipped due to errors
 	Filtered int      `json:"filtered"` // Story 6.4: Rows filtered (practices/away)
+	Excluded int      `json:"excluded"` // Story 6.5: Rows excluded (reference_id in exclusion list)
 	Errors   []string `json:"errors"`
+}
+
+// ExcludedReferenceID represents a permanently excluded match reference ID (Story 6.5)
+type ExcludedReferenceID struct {
+	ID          int64      `json:"id"`
+	ReferenceID string     `json:"reference_id"`
+	Reason      *string    `json:"reason"`
+	ExcludedBy  *int64     `json:"excluded_by"`
+	ExcludedAt  time.Time  `json:"excluded_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+// ExcludeReferenceIDRequest represents the request to exclude a reference ID (Story 6.5)
+type ExcludeReferenceIDRequest struct {
+	ReferenceID string  `json:"reference_id"`
+	Reason      *string `json:"reason"`
 }

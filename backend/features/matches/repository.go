@@ -36,6 +36,12 @@ type RepositoryInterface interface {
 
 	// History logging
 	LogEdit(ctx context.Context, matchID int64, actorID int64, changeDescription string) error
+
+	// Excluded reference IDs (Story 6.5)
+	IsReferenceIDExcluded(ctx context.Context, referenceID string) (bool, error)
+	AddExcludedReferenceID(ctx context.Context, referenceID string, reason *string, excludedBy int64) error
+	RemoveExcludedReferenceID(ctx context.Context, referenceID string) error
+	ListExcludedReferenceIDs(ctx context.Context) ([]ExcludedReferenceID, error)
 }
 
 // Repository handles match data access
@@ -597,4 +603,96 @@ func (r *Repository) Unarchive(ctx context.Context, matchID int64) error {
 	}
 
 	return nil
+}
+
+// IsReferenceIDExcluded checks if a reference_id is in the exclusion list (Story 6.5)
+func (r *Repository) IsReferenceIDExcluded(ctx context.Context, referenceID string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRowContext(
+		ctx,
+		"SELECT EXISTS(SELECT 1 FROM excluded_reference_ids WHERE reference_id = $1)",
+		referenceID,
+	).Scan(&exists)
+
+	if err != nil {
+		return false, fmt.Errorf("failed to check reference_id exclusion: %w", err)
+	}
+	return exists, nil
+}
+
+// AddExcludedReferenceID adds a reference_id to the exclusion list (Story 6.5)
+func (r *Repository) AddExcludedReferenceID(ctx context.Context, referenceID string, reason *string, excludedBy int64) error {
+	_, err := r.db.ExecContext(
+		ctx,
+		`INSERT INTO excluded_reference_ids (reference_id, reason, excluded_by)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (reference_id) DO UPDATE SET
+		   reason = EXCLUDED.reason,
+		   excluded_by = EXCLUDED.excluded_by,
+		   excluded_at = NOW(),
+		   updated_at = NOW()`,
+		referenceID, reason, excludedBy,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to add excluded reference_id: %w", err)
+	}
+	return nil
+}
+
+// RemoveExcludedReferenceID removes a reference_id from the exclusion list (Story 6.5)
+func (r *Repository) RemoveExcludedReferenceID(ctx context.Context, referenceID string) error {
+	result, err := r.db.ExecContext(
+		ctx,
+		"DELETE FROM excluded_reference_ids WHERE reference_id = $1",
+		referenceID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to remove excluded reference_id: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("reference_id not found in exclusion list")
+	}
+
+	return nil
+}
+
+// ListExcludedReferenceIDs retrieves all excluded reference IDs (Story 6.5)
+func (r *Repository) ListExcludedReferenceIDs(ctx context.Context) ([]ExcludedReferenceID, error) {
+	query := `
+		SELECT id, reference_id, reason, excluded_by, excluded_at, created_at, updated_at
+		FROM excluded_reference_ids
+		ORDER BY excluded_at DESC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list excluded reference IDs: %w", err)
+	}
+	defer rows.Close()
+
+	excluded := []ExcludedReferenceID{}
+	for rows.Next() {
+		var e ExcludedReferenceID
+		err := rows.Scan(
+			&e.ID,
+			&e.ReferenceID,
+			&e.Reason,
+			&e.ExcludedBy,
+			&e.ExcludedAt,
+			&e.CreatedAt,
+			&e.UpdatedAt,
+		)
+		if err != nil {
+			continue
+		}
+		excluded = append(excluded, e)
+	}
+
+	return excluded, nil
 }
