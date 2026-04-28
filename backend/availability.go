@@ -17,7 +17,7 @@ type ConflictingMatch struct {
 	EventName string `json:"event_name"`
 	TeamName  string `json:"team_name"`
 	StartTime string `json:"start_time"`
-	RoleType  string `json:"role_type"`
+	RoleType  string `json:"position"`
 }
 
 // MatchForReferee represents a match with eligibility and availability for a specific referee
@@ -114,8 +114,8 @@ func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request)
 			OR
 			-- OR the referee is assigned to this match (always show assignments)
 			EXISTS (
-				SELECT 1 FROM match_roles mr
-				WHERE mr.match_id = m.id AND mr.assigned_referee_id = $1
+				SELECT 1 FROM assignments mr
+				WHERE mr.match_id = m.id AND mr.referee_id = $1
 			)
 		  )
 		ORDER BY m.match_date ASC, m.start_time ASC, m.id ASC
@@ -218,9 +218,9 @@ func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request)
 		var acknowledged bool
 		var acknowledgedAt sql.NullTime
 		err = db.QueryRow(`
-			SELECT role_type, acknowledged, acknowledged_at
-			FROM match_roles
-			WHERE match_id = $1 AND assigned_referee_id = $2
+			SELECT position, acknowledged, acknowledged_at
+			FROM assignments
+			WHERE match_id = $1 AND referee_id = $2
 			LIMIT 1
 		`, m.ID, user.ID).Scan(&assignedRole, &acknowledged, &acknowledgedAt)
 
@@ -244,10 +244,10 @@ func getEligibleMatchesForRefereeHandler(w http.ResponseWriter, r *http.Request)
 			conflictRows, err := db.Query(`
 				SELECT
 					m2.id, m2.event_name, m2.team_name,
-					m2.start_time, mr2.role_type
+					m2.start_time, mr2.position
 				FROM matches m2
-				JOIN match_roles mr2 ON mr2.match_id = m2.id
-				WHERE mr2.assigned_referee_id = $1
+				JOIN assignments mr2 ON mr2.match_id = m2.id
+				WHERE mr2.referee_id = $1
 				  AND m2.id != $2
 				  AND m2.status = 'active'
 				  AND m2.archived = FALSE

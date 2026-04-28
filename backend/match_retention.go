@@ -97,7 +97,7 @@ func (s *MatchRetentionService) Stop() {
 }
 
 // PurgeOldMatches deletes archived matches older than the retention period
-// Also deletes associated match_roles (assignments)
+// Also deletes associated assignments (assignments)
 // Returns statistics about the purge operation
 func (s *MatchRetentionService) PurgeOldMatches() (*MatchPurgeResult, error) {
 	startTime := time.Now()
@@ -171,9 +171,9 @@ func (s *MatchRetentionService) PurgeOldMatches() (*MatchPurgeResult, error) {
 			break
 		}
 
-		// Delete associated match_roles first (foreign key constraint)
+		// Delete associated assignments first (foreign key constraint)
 		rolesResult, err := tx.Exec(
-			`DELETE FROM match_roles WHERE match_id = ANY($1)`,
+			`DELETE FROM assignments WHERE match_id = ANY($1)`,
 			convertToPostgresArray(matchIDs),
 		)
 		if err != nil {
