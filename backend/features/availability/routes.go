@@ -17,4 +17,8 @@ func (h *Handler) RegisterRoutes(
 	// Day unavailability routes (authenticated referees)
 	r.HandleFunc("/api/referee/day-unavailability", authMiddleware(h.GetDayUnavailability)).Methods("GET")
 	r.HandleFunc("/api/referee/day-unavailability/{date}", authMiddleware(h.ToggleDayUnavailability)).Methods("POST")
+
+	// Referee match listings (authenticated referees)
+	r.HandleFunc("/api/referee/matches", authMiddleware(h.GetEligibleMatchesForReferee)).Methods("GET")
+	r.HandleFunc("/api/referee/assignments", authMiddleware(h.GetRefereeAssignments)).Methods("GET")
 }

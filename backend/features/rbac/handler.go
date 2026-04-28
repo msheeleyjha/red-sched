@@ -1,4 +1,4 @@
-package main
+package rbac
 
 import (
 	"database/sql"
@@ -8,40 +8,28 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	"github.com/msheeley/referee-scheduler/shared/audit"
+	"github.com/msheeley/referee-scheduler/shared/middleware"
 )
 
-// RoleResponse represents a role in API responses
-type RoleResponse struct {
-	ID          int64    `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Permissions []string `json:"permissions,omitempty"`
+// Handler handles HTTP requests for RBAC admin operations
+type Handler struct {
+	db          *sql.DB
+	auditLogger *audit.Logger
+	authMW      *middleware.AuthMiddleware
 }
 
-// PermissionResponse represents a permission in API responses
-type PermissionResponse struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name"`
-	Description string `json:"description"`
-	Resource    string `json:"resource"`
-	Action      string `json:"action"`
+// NewHandler creates a new RBAC handler
+func NewHandler(db *sql.DB, auditLogger *audit.Logger, authMW *middleware.AuthMiddleware) *Handler {
+	return &Handler{
+		db:          db,
+		auditLogger: auditLogger,
+		authMW:      authMW,
+	}
 }
 
-// AssignRoleRequest represents the request body for assigning a role
-type AssignRoleRequest struct {
-	RoleID int64 `json:"role_id"`
-}
-
-// UserRolesResponse represents a user's roles
-type UserRolesResponse struct {
-	UserID int64          `json:"user_id"`
-	Roles  []RoleResponse `json:"roles"`
-}
-
-// assignRoleToUser assigns a role to a user
-// POST /api/admin/users/:id/roles
-func assignRoleToUser(w http.ResponseWriter, r *http.Request) {
+// AssignRoleToUser assigns a role to a user
+func (h *Handler) AssignRoleToUser(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	userIDStr := vars["id"]
 	targetUserID, err := strconv.ParseInt(userIDStr, 10, 64)
@@ -50,40 +38,32 @@ func assignRoleToUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse request body
 	var req AssignRoleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// Get current user ID for audit trail
-	currentUserID, err := getCurrentUserID(r)
+	currentUserID, err := h.authMW.GetCurrentUserID(r)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	// Verify target user exists
 	var exists bool
-	err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", targetUserID).Scan(&exists)
+	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", targetUserID).Scan(&exists)
 	if err != nil || !exists {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
 
-	// Verify role exists
-	err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM roles WHERE id = $1)", req.RoleID).Scan(&exists)
+	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM roles WHERE id = $1)", req.RoleID).Scan(&exists)
 	if err != nil || !exists {
 		http.Error(w, "Role not found", http.StatusNotFound)
 		return
 	}
 
-	// Check if user is trying to assign Super Admin role to themselves
-	// This is allowed (no special restriction)
-
-	// Check if assignment already exists
-	err = db.QueryRow(
+	err = h.db.QueryRow(
 		"SELECT EXISTS(SELECT 1 FROM user_roles WHERE user_id = $1 AND role_id = $2)",
 		targetUserID, req.RoleID,
 	).Scan(&exists)
@@ -97,8 +77,7 @@ func assignRoleToUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Assign role
-	_, err = db.Exec(
+	_, err = h.db.Exec(
 		"INSERT INTO user_roles (user_id, role_id, assigned_by) VALUES ($1, $2, $3)",
 		targetUserID, req.RoleID, currentUserID,
 	)
@@ -108,8 +87,7 @@ func assignRoleToUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create audit log entry
-	auditLogger.LogWithContext(r, AuditActionCreate, "user_role", targetUserID, nil, map[string]interface{}{
+	h.auditLogger.LogWithContext(r, audit.ActionCreate, "user_role", targetUserID, nil, map[string]interface{}{
 		"user_id":     targetUserID,
 		"role_id":     req.RoleID,
 		"assigned_by": currentUserID,
@@ -121,9 +99,8 @@ func assignRoleToUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// revokeRoleFromUser removes a role from a user
-// DELETE /api/admin/users/:id/roles/:roleId
-func revokeRoleFromUser(w http.ResponseWriter, r *http.Request) {
+// RevokeRoleFromUser removes a role from a user
+func (h *Handler) RevokeRoleFromUser(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	userIDStr := vars["id"]
 	roleIDStr := vars["roleId"]
@@ -140,16 +117,14 @@ func revokeRoleFromUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get current user ID for safety check
-	currentUserID, err := getCurrentUserID(r)
+	currentUserID, err := h.authMW.GetCurrentUserID(r)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	// Check if role is Super Admin
 	var roleName string
-	err = db.QueryRow("SELECT name FROM roles WHERE id = $1", roleID).Scan(&roleName)
+	err = h.db.QueryRow("SELECT name FROM roles WHERE id = $1", roleID).Scan(&roleName)
 	if err == sql.ErrNoRows {
 		http.Error(w, "Role not found", http.StatusNotFound)
 		return
@@ -160,14 +135,12 @@ func revokeRoleFromUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Prevent user from revoking their own Super Admin role (prevent lockout)
 	if roleName == "Super Admin" && currentUserID == targetUserID {
 		http.Error(w, "Cannot revoke your own Super Admin role", http.StatusForbidden)
 		return
 	}
 
-	// Revoke role
-	result, err := db.Exec(
+	result, err := h.db.Exec(
 		"DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2",
 		targetUserID, roleID,
 	)
@@ -183,8 +156,7 @@ func revokeRoleFromUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create audit log entry
-	auditLogger.LogWithContext(r, AuditActionDelete, "user_role", targetUserID, map[string]interface{}{
+	h.auditLogger.LogWithContext(r, audit.ActionDelete, "user_role", targetUserID, map[string]interface{}{
 		"user_id": targetUserID,
 		"role_id": roleID,
 	}, nil)
@@ -195,9 +167,8 @@ func revokeRoleFromUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// getUserRoles returns all roles for a user
-// GET /api/admin/users/:id/roles
-func getUserRoles(w http.ResponseWriter, r *http.Request) {
+// GetUserRoles returns all roles for a user
+func (h *Handler) GetUserRoles(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	userIDStr := vars["id"]
 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
@@ -206,16 +177,14 @@ func getUserRoles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify user exists
 	var exists bool
-	err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", userID).Scan(&exists)
+	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", userID).Scan(&exists)
 	if err != nil || !exists {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
 
-	// Get user's roles
-	rows, err := db.Query(`
+	rows, err := h.db.Query(`
 		SELECT r.id, r.name, r.description
 		FROM roles r
 		INNER JOIN user_roles ur ON r.id = ur.role_id
@@ -248,10 +217,9 @@ func getUserRoles(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// getAllRoles returns all available roles
-// GET /api/admin/roles
-func getAllRoles(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query(`
+// GetAllRoles returns all available roles
+func (h *Handler) GetAllRoles(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.db.Query(`
 		SELECT r.id, r.name, r.description
 		FROM roles r
 		ORDER BY r.name
@@ -271,8 +239,7 @@ func getAllRoles(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Get permissions for this role
-		permRows, err := db.Query(`
+		permRows, err := h.db.Query(`
 			SELECT p.name
 			FROM permissions p
 			INNER JOIN role_permissions rp ON p.id = rp.permission_id
@@ -303,10 +270,9 @@ func getAllRoles(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(roles)
 }
 
-// getAllPermissions returns all available permissions with display names
-// GET /api/admin/permissions
-func getAllPermissions(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query(`
+// GetAllPermissions returns all available permissions
+func (h *Handler) GetAllPermissions(w http.ResponseWriter, r *http.Request) {
+	rows, err := h.db.Query(`
 		SELECT id, name, display_name, description, resource, action
 		FROM permissions
 		ORDER BY resource, action

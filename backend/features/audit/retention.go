@@ -1,4 +1,4 @@
-package main
+package audit
 
 import (
 	"database/sql"
@@ -8,12 +8,12 @@ import (
 )
 
 const (
-	defaultRetentionDays = 730 // 2 years
+	defaultRetentionDays = 730
 	batchSize            = 1000
 )
 
-// AuditRetentionService manages audit log retention and purging
-type AuditRetentionService struct {
+// RetentionService manages audit log retention and purging
+type RetentionService struct {
 	db              *sql.DB
 	retentionDays   int
 	schedulerTicker *time.Ticker
@@ -29,9 +29,9 @@ type PurgeResult struct {
 	DurationMs   int64     `json:"duration_ms"`
 }
 
-// NewAuditRetentionService creates a new retention service
-func NewAuditRetentionService(db *sql.DB, retentionDays int) *AuditRetentionService {
-	service := &AuditRetentionService{
+// NewRetentionService creates a new retention service
+func NewRetentionService(db *sql.DB, retentionDays int) *RetentionService {
+	service := &RetentionService{
 		db:            db,
 		retentionDays: retentionDays,
 		stopChan:      make(chan bool),
@@ -42,20 +42,16 @@ func NewAuditRetentionService(db *sql.DB, retentionDays int) *AuditRetentionServ
 }
 
 // Start begins the daily purge scheduler
-func (s *AuditRetentionService) Start() {
-	// Calculate time until next midnight
+func (s *RetentionService) Start() {
 	now := time.Now()
 	nextMidnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
 	durationUntilMidnight := nextMidnight.Sub(now)
 
 	log.Printf("Audit retention scheduler starting. First purge in %v at %v", durationUntilMidnight, nextMidnight)
 
-	// Wait until midnight, then run daily
 	go func() {
-		// Wait until first midnight
 		time.Sleep(durationUntilMidnight)
 
-		// Run first purge
 		log.Println("Running scheduled audit log purge")
 		result, err := s.PurgeOldLogs()
 		if err != nil {
@@ -65,7 +61,6 @@ func (s *AuditRetentionService) Start() {
 				result.DeletedCount, result.CutoffDate.Format("2006-01-02"))
 		}
 
-		// Then run every 24 hours
 		s.schedulerTicker = time.NewTicker(24 * time.Hour)
 		defer s.schedulerTicker.Stop()
 
@@ -89,7 +84,7 @@ func (s *AuditRetentionService) Start() {
 }
 
 // Stop halts the scheduler
-func (s *AuditRetentionService) Stop() {
+func (s *RetentionService) Stop() {
 	close(s.stopChan)
 	if s.schedulerTicker != nil {
 		s.schedulerTicker.Stop()
@@ -97,8 +92,7 @@ func (s *AuditRetentionService) Stop() {
 }
 
 // PurgeOldLogs deletes audit logs older than the retention period
-// Returns statistics about the purge operation
-func (s *AuditRetentionService) PurgeOldLogs() (*PurgeResult, error) {
+func (s *RetentionService) PurgeOldLogs() (*PurgeResult, error) {
 	startTime := time.Now()
 	cutoffDate := time.Now().AddDate(0, 0, -s.retentionDays)
 
@@ -110,7 +104,6 @@ func (s *AuditRetentionService) PurgeOldLogs() (*PurgeResult, error) {
 		StartedAt:    startTime,
 	}
 
-	// Count total logs to be deleted (for logging purposes)
 	var totalToDelete int
 	err := s.db.QueryRow(
 		"SELECT COUNT(*) FROM audit_logs WHERE created_at < $1",
@@ -129,9 +122,7 @@ func (s *AuditRetentionService) PurgeOldLogs() (*PurgeResult, error) {
 
 	log.Printf("Found %d audit logs to purge", totalToDelete)
 
-	// Delete in batches to avoid locking the table for too long
 	for {
-		// Delete a batch
 		deleteResult, err := s.db.Exec(
 			`DELETE FROM audit_logs
 			WHERE id IN (
@@ -150,12 +141,10 @@ func (s *AuditRetentionService) PurgeOldLogs() (*PurgeResult, error) {
 		rowsDeleted, _ := deleteResult.RowsAffected()
 		result.DeletedCount += int(rowsDeleted)
 
-		// If we deleted less than batchSize, we're done
 		if rowsDeleted < int64(batchSize) {
 			break
 		}
 
-		// Small delay between batches to reduce database load
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -165,7 +154,6 @@ func (s *AuditRetentionService) PurgeOldLogs() (*PurgeResult, error) {
 	log.Printf("Audit log purge completed: deleted %d logs in %dms",
 		result.DeletedCount, result.DurationMs)
 
-	// Log the purge operation itself (meta-audit)
 	if result.DeletedCount > 0 {
 		s.logPurgeOperation(result)
 	}
@@ -173,9 +161,7 @@ func (s *AuditRetentionService) PurgeOldLogs() (*PurgeResult, error) {
 	return result, nil
 }
 
-// logPurgeOperation creates an audit log entry for the purge operation itself (meta-audit)
-func (s *AuditRetentionService) logPurgeOperation(result *PurgeResult) {
-	// Create a meta-audit entry (user_id is NULL for system operations)
+func (s *RetentionService) logPurgeOperation(result *PurgeResult) {
 	_, err := s.db.Exec(
 		`INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, old_values, new_values, ip_address, created_at)
 		VALUES (NULL, 'delete', 'audit_log_purge', 0, $1, NULL, NULL, CURRENT_TIMESTAMP)`,
@@ -201,6 +187,6 @@ func (s *AuditRetentionService) logPurgeOperation(result *PurgeResult) {
 }
 
 // GetRetentionDays returns the current retention period in days
-func (s *AuditRetentionService) GetRetentionDays() int {
+func (s *RetentionService) GetRetentionDays() int {
 	return s.retentionDays
 }

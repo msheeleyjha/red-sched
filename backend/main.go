@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,12 +12,15 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/msheeley/referee-scheduler/features/acknowledgment"
 	"github.com/msheeley/referee-scheduler/features/assignments"
+	auditFeature "github.com/msheeley/referee-scheduler/features/audit"
 	"github.com/msheeley/referee-scheduler/features/availability"
 	"github.com/msheeley/referee-scheduler/features/eligibility"
 	"github.com/msheeley/referee-scheduler/features/match_reports"
 	"github.com/msheeley/referee-scheduler/features/matches"
+	"github.com/msheeley/referee-scheduler/features/rbac"
 	"github.com/msheeley/referee-scheduler/features/referees"
 	"github.com/msheeley/referee-scheduler/features/users"
+	auditShared "github.com/msheeley/referee-scheduler/shared/audit"
 	"github.com/msheeley/referee-scheduler/shared/config"
 	"github.com/msheeley/referee-scheduler/shared/database"
 	"github.com/msheeley/referee-scheduler/shared/middleware"
@@ -27,19 +29,10 @@ import (
 )
 
 var (
-	cfg                     *config.Config
-	db                      *sql.DB
-	sessionStore            *sessions.CookieStore
-	oauth2Config            *oauth2.Config
-	auditLogger             *AuditLogger
-	retentionService        *AuditRetentionService
-	matchRetentionService   *MatchRetentionService
+	cfg          *config.Config
+	sessionStore *sessions.CookieStore
+	oauth2Config *oauth2.Config
 
-	// Middleware instances
-	authMW *middleware.AuthMiddleware
-	rbacMW *middleware.RBACMiddleware
-
-	// Feature services (temporary, until auth is refactored)
 	usersService *users.Service
 )
 
@@ -54,27 +47,26 @@ func main() {
 	}
 	defer dbConn.Close()
 
-	// Set global db variable (will be removed when features are refactored)
-	db = dbConn.DB
+	db := dbConn.DB
 
 	// Run migrations
 	if err := database.RunMigrations(cfg.DatabaseURL); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	// Initialize audit logger
-	auditLogger = NewAuditLogger(db)
+	// Initialize shared audit logger
+	auditLogger := auditShared.NewLogger(db)
 	defer auditLogger.Close()
 	log.Println("Audit logger initialized")
 
 	// Initialize audit retention service
-	retentionService = NewAuditRetentionService(db, cfg.AuditRetentionDays)
-	retentionService.Start()
-	defer retentionService.Stop()
+	auditRetentionService := auditFeature.NewRetentionService(db, cfg.AuditRetentionDays)
+	auditRetentionService.Start()
+	defer auditRetentionService.Stop()
 	log.Println("Audit retention service started")
 
 	// Initialize match retention service
-	matchRetentionService = NewMatchRetentionService(db, cfg.MatchRetentionDays)
+	matchRetentionService := matches.NewRetentionService(db, cfg.MatchRetentionDays)
 	matchRetentionService.Start()
 	defer matchRetentionService.Stop()
 	log.Println("Match retention service started")
@@ -102,8 +94,8 @@ func main() {
 	}
 
 	// Initialize middleware
-	authMW = middleware.NewAuthMiddleware(sessionStore, db)
-	rbacMW = middleware.NewRBACMiddleware(sessionStore, db)
+	authMW := middleware.NewAuthMiddleware(sessionStore, db)
+	rbacMW := middleware.NewRBACMiddleware(sessionStore, db)
 
 	// Initialize feature slices
 	usersRepo := users.NewRepository(db)
@@ -133,7 +125,7 @@ func main() {
 
 	availabilityRepo := availability.NewRepository(db)
 	availabilityService := availability.NewService(availabilityRepo)
-	availabilityHandler := availability.NewHandler(availabilityService)
+	availabilityHandler := availability.NewHandler(availabilityService, db)
 	log.Println("Availability feature initialized")
 
 	eligibilityRepo := eligibility.NewRepository(db)
@@ -146,6 +138,12 @@ func main() {
 	matchReportsHandler := match_reports.NewHandler(matchReportsService, db)
 	log.Println("Match reports feature initialized")
 
+	auditHandler := auditFeature.NewHandler(db, auditRetentionService)
+	log.Println("Audit feature initialized")
+
+	rbacHandler := rbac.NewHandler(db, auditLogger, authMW)
+	log.Println("RBAC feature initialized")
+
 	// Setup router
 	r := mux.NewRouter()
 
@@ -155,34 +153,20 @@ func main() {
 	r.HandleFunc("/api/auth/google/callback", googleCallbackHandler).Methods("GET")
 	r.HandleFunc("/api/auth/logout", logoutHandler).Methods("POST")
 
-	// Feature routes (using new AuthMiddleware)
+	// Feature routes
 	usersHandler.RegisterRoutes(r, authMW.RequireAuth)
-	matchesHandler.RegisterRoutes(r, authMW.RequireAuth, requirePermission)
-	assignmentsHandler.RegisterRoutes(r, authMW.RequireAuth, requirePermission)
+	matchesHandler.RegisterRoutes(r, authMW.RequireAuth, rbacMW.RequirePermission)
+	assignmentsHandler.RegisterRoutes(r, authMW.RequireAuth, rbacMW.RequirePermission)
 	acknowledgmentHandler.RegisterRoutes(r, authMW.RequireAuth)
-	refereesHandler.RegisterRoutes(r, authMW.RequireAuth, requirePermission)
+	refereesHandler.RegisterRoutes(r, authMW.RequireAuth, rbacMW.RequirePermission)
 	availabilityHandler.RegisterRoutes(r, authMW.RequireAuth)
-	eligibilityHandler.RegisterRoutes(r, authMW.RequireAuth, requirePermission)
+	eligibilityHandler.RegisterRoutes(r, authMW.RequireAuth, rbacMW.RequirePermission)
 	matchReportsHandler.RegisterRoutes(r, authMW.RequireAuth)
+	auditHandler.RegisterRoutes(r, rbacMW.RequirePermission)
+	rbacHandler.RegisterRoutes(r, rbacMW.RequirePermission)
 
-	// TODO: Migrate these routes to availability feature
-	r.HandleFunc("/api/referee/matches", authMW.RequireAuth(getEligibleMatchesForRefereeHandler)).Methods("GET")
-	r.HandleFunc("/api/referee/assignments", authMW.RequireAuth(getRefereeAssignmentsHandler)).Methods("GET")
-
-	// Epic 1: RBAC Admin routes (requires can_assign_roles permission)
-	r.HandleFunc("/api/admin/users/{id}/roles", requirePermission("can_assign_roles", assignRoleToUser)).Methods("POST")
-	r.HandleFunc("/api/admin/users/{id}/roles/{roleId}", requirePermission("can_assign_roles", revokeRoleFromUser)).Methods("DELETE")
-	r.HandleFunc("/api/admin/users/{id}/roles", requirePermission("can_assign_roles", getUserRoles)).Methods("GET")
-	r.HandleFunc("/api/admin/roles", requirePermission("can_assign_roles", getAllRoles)).Methods("GET")
-	r.HandleFunc("/api/admin/permissions", requirePermission("can_assign_roles", getAllPermissions)).Methods("GET")
-
-	// Epic 2: Audit Logging routes (requires can_view_audit_logs permission)
-	r.HandleFunc("/api/admin/audit-logs", requirePermission("can_view_audit_logs", getAuditLogsHandler)).Methods("GET")
-	r.HandleFunc("/api/admin/audit-logs/export", requirePermission("can_view_audit_logs", exportAuditLogsHandler)).Methods("GET")
-	r.HandleFunc("/api/admin/audit-logs/purge", requirePermission("can_view_audit_logs", purgeAuditLogsHandler)).Methods("POST")
-
-	// Epic 4: Match Retention routes (requires can_view_audit_logs permission)
-	r.HandleFunc("/api/admin/matches/purge", requirePermission("can_view_audit_logs", purgeArchivedMatchesHandler)).Methods("POST")
+	// Match retention purge route
+	r.HandleFunc("/api/admin/matches/purge", rbacMW.RequirePermission("can_view_audit_logs", purgeArchivedMatchesHandler(matchRetentionService))).Methods("POST")
 
 	// Setup CORS
 	corsHandler := middleware.NewCORSHandler(cfg.FrontendURL)
@@ -203,10 +187,8 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func googleAuthHandler(w http.ResponseWriter, r *http.Request) {
-	// Generate random state for CSRF protection
 	state := fmt.Sprintf("%d", time.Now().UnixNano())
 
-	// Store state in session
 	session, _ := sessionStore.Get(r, "auth-session")
 	session.Values["oauth_state"] = state
 	session.Save(r, w)
@@ -216,7 +198,6 @@ func googleAuthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func googleCallbackHandler(w http.ResponseWriter, r *http.Request) {
-	// Verify state
 	session, err := sessionStore.Get(r, "auth-session")
 	if err != nil {
 		http.Error(w, "Session error", http.StatusInternalServerError)
@@ -230,7 +211,6 @@ func googleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Exchange code for token
 	code := r.URL.Query().Get("code")
 	token, err := oauth2Config.Exchange(r.Context(), code)
 	if err != nil {
@@ -238,7 +218,6 @@ func googleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get user info from Google
 	client := oauth2Config.Client(r.Context(), token)
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
 	if err != nil {
@@ -259,7 +238,6 @@ func googleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find or create user
 	user, err := usersService.FindOrCreate(r.Context(), userInfo.ID, userInfo.Email, userInfo.Name)
 	if err != nil {
 		log.Printf("Failed to find or create user: %v", err)
@@ -267,7 +245,6 @@ func googleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store user ID in session
 	session.Values["user_id"] = user.ID
 	session.Values["user_role"] = user.Role
 	delete(session.Values, "oauth_state")
@@ -276,7 +253,6 @@ func googleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Redirect to frontend
 	http.Redirect(w, r, cfg.FrontendURL+"/auth/callback", http.StatusTemporaryRedirect)
 }
 
@@ -287,7 +263,6 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clear session
 	session.Values = make(map[interface{}]interface{})
 	session.Options.MaxAge = -1
 	session.Save(r, w)
@@ -296,27 +271,24 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "logged out"})
 }
 
-// purgeArchivedMatchesHandler manually triggers archived match purge (admin only)
-// POST /api/admin/matches/purge
-func purgeArchivedMatchesHandler(w http.ResponseWriter, r *http.Request) {
-	// Trigger purge via the match retention service
-	if matchRetentionService == nil {
-		http.Error(w, "Match retention service not initialized", http.StatusInternalServerError)
-		return
+// purgeArchivedMatchesHandler returns a handler that triggers archived match purge
+func purgeArchivedMatchesHandler(retentionService *matches.RetentionService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if retentionService == nil {
+			http.Error(w, "Match retention service not initialized", http.StatusInternalServerError)
+			return
+		}
+
+		log.Println("Manual archived match purge triggered by admin")
+
+		result, err := retentionService.PurgeOldMatches()
+		if err != nil {
+			log.Printf("Error during manual match purge: %v", err)
+			http.Error(w, "Failed to purge archived matches", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
 	}
-
-	log.Println("Manual archived match purge triggered by admin")
-
-	result, err := matchRetentionService.PurgeOldMatches()
-	if err != nil {
-		log.Printf("Error during manual match purge: %v", err)
-		http.Error(w, "Failed to purge archived matches", http.StatusInternalServerError)
-		return
-	}
-
-	// Return purge statistics
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
 }
-
-// Note: Old authMiddleware function removed - now using authMW.RequireAuth from shared/middleware

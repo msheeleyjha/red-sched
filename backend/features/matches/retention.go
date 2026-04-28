@@ -1,4 +1,4 @@
-package main
+package matches
 
 import (
 	"database/sql"
@@ -8,31 +8,31 @@ import (
 )
 
 const (
-	defaultMatchRetentionDays = 730 // 2 years
-	matchPurgeBatchSize       = 100 // Smaller batches for matches (more related data to delete)
+	defaultMatchRetentionDays = 730
+	matchPurgeBatchSize       = 100
 )
 
-// MatchRetentionService manages archived match retention and purging
-type MatchRetentionService struct {
+// RetentionService manages archived match retention and purging
+type RetentionService struct {
 	db              *sql.DB
 	retentionDays   int
 	schedulerTicker *time.Ticker
 	stopChan        chan bool
 }
 
-// MatchPurgeResult contains statistics about a match purge operation
-type MatchPurgeResult struct {
-	MatchesDeleted      int       `json:"matches_deleted"`
-	RolesDeleted        int       `json:"roles_deleted"`
-	CutoffDate          time.Time `json:"cutoff_date"`
-	StartedAt           time.Time `json:"started_at"`
-	CompletedAt         time.Time `json:"completed_at"`
-	DurationMs          int64     `json:"duration_ms"`
+// PurgeResult contains statistics about a match purge operation
+type PurgeResult struct {
+	MatchesDeleted int       `json:"matches_deleted"`
+	RolesDeleted   int       `json:"roles_deleted"`
+	CutoffDate     time.Time `json:"cutoff_date"`
+	StartedAt      time.Time `json:"started_at"`
+	CompletedAt    time.Time `json:"completed_at"`
+	DurationMs     int64     `json:"duration_ms"`
 }
 
-// NewMatchRetentionService creates a new match retention service
-func NewMatchRetentionService(db *sql.DB, retentionDays int) *MatchRetentionService {
-	service := &MatchRetentionService{
+// NewRetentionService creates a new match retention service
+func NewRetentionService(db *sql.DB, retentionDays int) *RetentionService {
+	service := &RetentionService{
 		db:            db,
 		retentionDays: retentionDays,
 		stopChan:      make(chan bool),
@@ -43,8 +43,7 @@ func NewMatchRetentionService(db *sql.DB, retentionDays int) *MatchRetentionServ
 }
 
 // Start begins the monthly purge scheduler
-func (s *MatchRetentionService) Start() {
-	// Calculate time until first day of next month at midnight
+func (s *RetentionService) Start() {
 	now := time.Now()
 	firstDayNextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, now.Location())
 	durationUntilNextMonth := firstDayNextMonth.Sub(now)
@@ -52,10 +51,8 @@ func (s *MatchRetentionService) Start() {
 	log.Printf("Match retention scheduler starting. First purge in %v at %v", durationUntilNextMonth, firstDayNextMonth)
 
 	go func() {
-		// Wait until first day of next month
 		time.Sleep(durationUntilNextMonth)
 
-		// Run first purge
 		log.Println("Running scheduled archived match purge")
 		result, err := s.PurgeOldMatches()
 		if err != nil {
@@ -65,7 +62,6 @@ func (s *MatchRetentionService) Start() {
 				result.MatchesDeleted, result.CutoffDate.Format("2006-01-02"))
 		}
 
-		// Then run monthly (30 days)
 		s.schedulerTicker = time.NewTicker(30 * 24 * time.Hour)
 		defer s.schedulerTicker.Stop()
 
@@ -89,7 +85,7 @@ func (s *MatchRetentionService) Start() {
 }
 
 // Stop halts the scheduler
-func (s *MatchRetentionService) Stop() {
+func (s *RetentionService) Stop() {
 	close(s.stopChan)
 	if s.schedulerTicker != nil {
 		s.schedulerTicker.Stop()
@@ -97,22 +93,19 @@ func (s *MatchRetentionService) Stop() {
 }
 
 // PurgeOldMatches deletes archived matches older than the retention period
-// Also deletes associated assignments (assignments)
-// Returns statistics about the purge operation
-func (s *MatchRetentionService) PurgeOldMatches() (*MatchPurgeResult, error) {
+func (s *RetentionService) PurgeOldMatches() (*PurgeResult, error) {
 	startTime := time.Now()
 	cutoffDate := time.Now().AddDate(0, 0, -s.retentionDays)
 
 	log.Printf("Starting archived match purge for matches archived before %v", cutoffDate.Format("2006-01-02"))
 
-	result := &MatchPurgeResult{
+	result := &PurgeResult{
 		MatchesDeleted: 0,
 		RolesDeleted:   0,
 		CutoffDate:     cutoffDate,
 		StartedAt:      startTime,
 	}
 
-	// Count total matches to be deleted (for logging purposes)
 	var totalToDelete int
 	err := s.db.QueryRow(
 		"SELECT COUNT(*) FROM matches WHERE archived = TRUE AND archived_at < $1",
@@ -131,15 +124,12 @@ func (s *MatchRetentionService) PurgeOldMatches() (*MatchPurgeResult, error) {
 
 	log.Printf("Found %d archived matches to purge", totalToDelete)
 
-	// Delete in batches to avoid locking the table for too long
 	for {
-		// Start a transaction for each batch
 		tx, err := s.db.Begin()
 		if err != nil {
 			return nil, fmt.Errorf("failed to begin transaction: %w", err)
 		}
 
-		// Get a batch of match IDs to delete
 		rows, err := tx.Query(
 			`SELECT id FROM matches
 			WHERE archived = TRUE AND archived_at < $1
@@ -165,13 +155,11 @@ func (s *MatchRetentionService) PurgeOldMatches() (*MatchPurgeResult, error) {
 		}
 		rows.Close()
 
-		// If no matches found, we're done
 		if len(matchIDs) == 0 {
 			tx.Rollback()
 			break
 		}
 
-		// Delete associated assignments first (foreign key constraint)
 		rolesResult, err := tx.Exec(
 			`DELETE FROM assignments WHERE match_id = ANY($1)`,
 			convertToPostgresArray(matchIDs),
@@ -184,7 +172,6 @@ func (s *MatchRetentionService) PurgeOldMatches() (*MatchPurgeResult, error) {
 		rolesDeleted, _ := rolesResult.RowsAffected()
 		result.RolesDeleted += int(rolesDeleted)
 
-		// Delete the matches
 		matchesResult, err := tx.Exec(
 			`DELETE FROM matches WHERE id = ANY($1)`,
 			convertToPostgresArray(matchIDs),
@@ -197,19 +184,16 @@ func (s *MatchRetentionService) PurgeOldMatches() (*MatchPurgeResult, error) {
 		matchesDeleted, _ := matchesResult.RowsAffected()
 		result.MatchesDeleted += int(matchesDeleted)
 
-		// Commit the transaction
 		if err := tx.Commit(); err != nil {
 			return nil, fmt.Errorf("failed to commit transaction: %w", err)
 		}
 
 		log.Printf("Purged batch: %d matches, %d roles", matchesDeleted, rolesDeleted)
 
-		// If we deleted less than batchSize, we're done
 		if len(matchIDs) < matchPurgeBatchSize {
 			break
 		}
 
-		// Small delay between batches to reduce database load
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -219,7 +203,6 @@ func (s *MatchRetentionService) PurgeOldMatches() (*MatchPurgeResult, error) {
 	log.Printf("Archived match purge completed: deleted %d matches and %d role assignments in %dms",
 		result.MatchesDeleted, result.RolesDeleted, result.DurationMs)
 
-	// Log the purge operation to audit logs
 	if result.MatchesDeleted > 0 {
 		s.logPurgeOperation(result)
 	}
@@ -227,9 +210,7 @@ func (s *MatchRetentionService) PurgeOldMatches() (*MatchPurgeResult, error) {
 	return result, nil
 }
 
-// logPurgeOperation creates an audit log entry for the purge operation
-func (s *MatchRetentionService) logPurgeOperation(result *MatchPurgeResult) {
-	// Create an audit entry (user_id is NULL for system operations)
+func (s *RetentionService) logPurgeOperation(result *PurgeResult) {
 	_, err := s.db.Exec(
 		`INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, old_values, new_values, ip_address, created_at)
 		VALUES (NULL, 'delete', 'match_purge', 0, $1, NULL, NULL, CURRENT_TIMESTAMP)`,
@@ -257,12 +238,10 @@ func (s *MatchRetentionService) logPurgeOperation(result *MatchPurgeResult) {
 }
 
 // GetRetentionDays returns the current retention period in days
-func (s *MatchRetentionService) GetRetentionDays() int {
+func (s *RetentionService) GetRetentionDays() int {
 	return s.retentionDays
 }
 
-// convertToPostgresArray converts a slice of int64 to a PostgreSQL array format
 func convertToPostgresArray(ids []int64) interface{} {
-	// PostgreSQL driver will handle the conversion
 	return ids
 }
