@@ -134,6 +134,27 @@ func (s *Service) ParseCSV(file multipart.File, filename string) (*ImportPreview
 	// Check for duplicates
 	duplicates := s.detectDuplicates(rows)
 
+	// Story 6.1: Reject file if duplicate reference_ids found
+	if len(duplicates) > 0 {
+		// Build error message listing duplicate reference_ids
+		duplicateRefIDs := make([]string, 0)
+		for _, dup := range duplicates {
+			if dup.Signal == "reference_id" && len(dup.Matches) > 0 {
+				// Get the reference_id from the first match in the group
+				refID := dup.Matches[0].ReferenceID
+				if refID != "" {
+					duplicateRefIDs = append(duplicateRefIDs, refID)
+				}
+			}
+		}
+
+		if len(duplicateRefIDs) > 0 {
+			errMsg := fmt.Sprintf("CSV file contains duplicate reference_id values: %s. Please remove duplicates and re-upload.",
+				strings.Join(duplicateRefIDs, ", "))
+			return nil, errors.NewBadRequest(errMsg)
+		}
+	}
+
 	response := &ImportPreviewResponse{
 		Rows:       rows,
 		Duplicates: duplicates,
