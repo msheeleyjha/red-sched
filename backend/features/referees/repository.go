@@ -179,9 +179,9 @@ func (r *Repository) HasUpcomingAssignments(ctx context.Context, refereeID int64
 	err := r.db.QueryRowContext(
 		ctx,
 		`SELECT EXISTS(
-			SELECT 1 FROM match_roles mr
+			SELECT 1 FROM assignments mr
 			JOIN matches m ON mr.match_id = m.id
-			WHERE mr.assigned_referee_id = $1
+			WHERE mr.referee_id = $1
 			  AND m.match_date >= CURRENT_DATE
 			  AND m.status = 'active'
 		)`,

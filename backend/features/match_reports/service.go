@@ -126,10 +126,10 @@ func (s *Service) isAuthorizedForReport(ctx context.Context, matchID, userID int
 	var isCenterReferee bool
 	assignmentQuery := `
 		SELECT EXISTS (
-			SELECT 1 FROM match_roles
+			SELECT 1 FROM assignments
 			WHERE match_id = $1
-			  AND assigned_referee_id = $2
-			  AND role_type = 'center'
+			  AND referee_id = $2
+			  AND position = 'center'
 		)
 	`
 	err = s.db.QueryRowContext(ctx, assignmentQuery, matchID, userID).Scan(&isCenterReferee)

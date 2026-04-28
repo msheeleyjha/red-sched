@@ -31,9 +31,9 @@ func (r *Repository) GetRefereeAssignmentRole(ctx context.Context, matchID int64
 	var roleType string
 	err := r.db.QueryRowContext(
 		ctx,
-		`SELECT role_type
-		 FROM match_roles
-		 WHERE match_id = $1 AND assigned_referee_id = $2`,
+		`SELECT position
+		 FROM assignments
+		 WHERE match_id = $1 AND referee_id = $2`,
 		matchID, refereeID,
 	).Scan(&roleType)
 
@@ -51,9 +51,9 @@ func (r *Repository) GetRefereeAssignmentRole(ctx context.Context, matchID int64
 func (r *Repository) AcknowledgeAssignment(ctx context.Context, matchID int64, refereeID int64, acknowledgedAt time.Time) error {
 	_, err := r.db.ExecContext(
 		ctx,
-		`UPDATE match_roles
+		`UPDATE assignments
 		 SET acknowledged = true, acknowledged_at = $1
-		 WHERE match_id = $2 AND assigned_referee_id = $3`,
+		 WHERE match_id = $2 AND referee_id = $3`,
 		acknowledgedAt, matchID, refereeID,
 	)
 

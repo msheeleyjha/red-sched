@@ -91,9 +91,9 @@ func (r *Repository) GetRoleSlot(ctx context.Context, matchID int64, roleType st
 
 	err := r.db.QueryRowContext(
 		ctx,
-		`SELECT id, match_id, role_type, assigned_referee_id, acknowledged, acknowledged_at, updated_at, viewed_by_referee, created_at
-		 FROM match_roles
-		 WHERE match_id = $1 AND role_type = $2`,
+		`SELECT id, match_id, position, referee_id, acknowledged, acknowledged_at, updated_at, viewed_by_referee, created_at
+		 FROM assignments
+		 WHERE match_id = $1 AND position = $2`,
 		matchID, roleType,
 	).Scan(
 		&slot.ID,
@@ -131,8 +131,8 @@ func (r *Repository) UpdateRoleAssignment(ctx context.Context, roleID int64, ref
 
 	_, err := r.db.ExecContext(
 		ctx,
-		`UPDATE match_roles
-		 SET assigned_referee_id = $1,
+		`UPDATE assignments
+		 SET referee_id = $1,
 		     acknowledged = false,
 		     acknowledged_at = NULL,
 		     updated_at = NOW(),
@@ -173,11 +173,11 @@ func (r *Repository) GetRefereeExistingRoleOnMatch(ctx context.Context, matchID 
 	var roleType sql.NullString
 	err := r.db.QueryRowContext(
 		ctx,
-		`SELECT role_type
-		 FROM match_roles
+		`SELECT position
+		 FROM assignments
 		 WHERE match_id = $1
-		   AND assigned_referee_id = $2
-		   AND role_type != $3`,
+		   AND referee_id = $2
+		   AND position != $3`,
 		matchID, refereeID, excludeRoleType,
 	).Scan(&roleType)
 
@@ -200,10 +200,10 @@ func (r *Repository) GetRefereeExistingRoleOnMatch(ctx context.Context, matchID 
 func (r *Repository) FindConflictingAssignments(ctx context.Context, refereeID int64, matchID int64, startTime time.Time, endTime time.Time) ([]ConflictMatch, error) {
 	rows, err := r.db.QueryContext(
 		ctx,
-		`SELECT m.id, m.event_name, m.team_name, m.match_date, m.start_time, mr.role_type
+		`SELECT m.id, m.event_name, m.team_name, m.match_date, m.start_time, mr.position
 		 FROM matches m
-		 JOIN match_roles mr ON mr.match_id = m.id
-		 WHERE mr.assigned_referee_id = $1
+		 JOIN assignments mr ON mr.match_id = m.id
+		 WHERE mr.referee_id = $1
 		   AND m.id != $2
 		   AND m.status = 'active'
 		   AND m.archived = FALSE
@@ -257,7 +257,7 @@ func (r *Repository) LogAssignment(ctx context.Context, history *AssignmentHisto
 
 	_, err := r.db.ExecContext(
 		ctx,
-		`INSERT INTO assignment_history (match_id, role_type, old_referee_id, new_referee_id, action, actor_id, created_at)
+		`INSERT INTO assignment_history (match_id, position, old_referee_id, new_referee_id, action, actor_id, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
 		history.MatchID,
 		history.RoleType,
@@ -281,11 +281,11 @@ func (r *Repository) GetRefereeMatchHistory(ctx context.Context, refereeID int64
 			m.id, m.event_name, m.team_name, m.age_group, m.match_date,
 			m.start_time, m.end_time, m.location, m.status,
 			m.archived, m.archived_at,
-			mr.role_type, mr.acknowledged, mr.acknowledged_at,
+			mr.position, mr.acknowledged, mr.acknowledged_at,
 			mr.updated_at, mr.viewed_by_referee
 		FROM matches m
-		JOIN match_roles mr ON mr.match_id = m.id
-		WHERE mr.assigned_referee_id = $1
+		JOIN assignments mr ON mr.match_id = m.id
+		WHERE mr.referee_id = $1
 		  AND m.status != 'deleted'
 		ORDER BY m.match_date DESC, m.start_time DESC`,
 		refereeID,
@@ -346,9 +346,9 @@ func (r *Repository) GetRefereeMatchHistory(ctx context.Context, refereeID int64
 func (r *Repository) MarkAssignmentAsViewed(ctx context.Context, matchID int64, refereeID int64) error {
 	_, err := r.db.ExecContext(
 		ctx,
-		`UPDATE match_roles
+		`UPDATE assignments
 		 SET viewed_by_referee = true
-		 WHERE match_id = $1 AND assigned_referee_id = $2`,
+		 WHERE match_id = $1 AND referee_id = $2`,
 		matchID, refereeID,
 	)
 
@@ -363,10 +363,10 @@ func (r *Repository) MarkAssignmentAsViewed(ctx context.Context, matchID int64, 
 func (r *Repository) ResetViewedStatusForMatch(ctx context.Context, matchID int64) error {
 	_, err := r.db.ExecContext(
 		ctx,
-		`UPDATE match_roles
+		`UPDATE assignments
 		 SET viewed_by_referee = false,
 		     updated_at = NOW()
-		 WHERE match_id = $1 AND assigned_referee_id IS NOT NULL`,
+		 WHERE match_id = $1 AND referee_id IS NOT NULL`,
 		matchID,
 	)
 
