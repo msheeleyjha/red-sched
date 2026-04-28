@@ -15,6 +15,7 @@ import (
 	"github.com/msheeley/referee-scheduler/features/assignments"
 	"github.com/msheeley/referee-scheduler/features/availability"
 	"github.com/msheeley/referee-scheduler/features/eligibility"
+	"github.com/msheeley/referee-scheduler/features/match_reports"
 	"github.com/msheeley/referee-scheduler/features/matches"
 	"github.com/msheeley/referee-scheduler/features/referees"
 	"github.com/msheeley/referee-scheduler/features/users"
@@ -140,6 +141,11 @@ func main() {
 	eligibilityHandler := eligibility.NewHandler(eligibilityService)
 	log.Println("Eligibility feature initialized")
 
+	matchReportsRepo := match_reports.NewRepository(db)
+	matchReportsService := match_reports.NewService(matchReportsRepo, db)
+	matchReportsHandler := match_reports.NewHandler(matchReportsService, db)
+	log.Println("Match reports feature initialized")
+
 	// Setup router
 	r := mux.NewRouter()
 
@@ -157,6 +163,7 @@ func main() {
 	refereesHandler.RegisterRoutes(r, authMW.RequireAuth, requirePermission)
 	availabilityHandler.RegisterRoutes(r, authMW.RequireAuth)
 	eligibilityHandler.RegisterRoutes(r, authMW.RequireAuth, requirePermission)
+	matchReportsHandler.RegisterRoutes(r, authMW.RequireAuth)
 
 	// TODO: Migrate this route to availability feature
 	r.HandleFunc("/api/referee/matches", authMW.RequireAuth(getEligibleMatchesForRefereeHandler)).Methods("GET")
