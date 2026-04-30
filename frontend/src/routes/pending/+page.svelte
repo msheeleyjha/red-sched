@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import type { PageData } from './$types';
 
 	export let data: PageData;
@@ -12,6 +12,7 @@
 				method: 'POST',
 				credentials: 'include'
 			});
+			await invalidateAll();
 			goto('/');
 		} catch (error) {
 			console.error('Logout error:', error);
@@ -102,16 +103,6 @@
 		display: flex;
 		gap: 1rem;
 		flex-wrap: wrap;
-	}
-
-	.btn-secondary {
-		background-color: var(--bg-secondary);
-		color: var(--text-primary);
-		border: 1px solid var(--border-color);
-	}
-
-	.btn-secondary:hover {
-		background-color: #f3f4f6;
 	}
 
 	@media (max-width: 640px) {

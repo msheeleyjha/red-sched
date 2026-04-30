@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
 
@@ -99,10 +98,8 @@
 		}
 	}
 
-	function handleBack() {
-		// Route back to dashboard
-		goto('/dashboard');
-	}
+	$: backPath = data.user?.role === 'pending_referee' ? '/pending' : '/dashboard';
+	$: backLabel = data.user?.role === 'pending_referee' ? 'Back' : 'Back to Dashboard';
 </script>
 
 <svelte:head>
@@ -115,7 +112,7 @@
 			<img src="/logo.svg" alt="Logo" class="header-logo" />
 			<h1>My Profile</h1>
 		</div>
-		<button on:click={handleBack} class="btn btn-secondary">Back to Dashboard</button>
+		<a href={backPath} class="btn btn-secondary">{backLabel}</a>
 	</div>
 
 	{#if loading}
@@ -281,34 +278,6 @@
 		margin-top: 2rem;
 		display: flex;
 		gap: 1rem;
-	}
-
-	.btn-secondary {
-		background-color: white;
-		color: var(--text-primary);
-		border: 1px solid var(--border-color);
-	}
-
-	.btn-secondary:hover {
-		background-color: var(--bg-secondary);
-	}
-
-	.alert {
-		padding: 1rem;
-		border-radius: 0.375rem;
-		margin-bottom: 1.5rem;
-	}
-
-	.alert-error {
-		background-color: #fee;
-		color: var(--error-color);
-		border: 1px solid var(--error-color);
-	}
-
-	.alert-success {
-		background-color: #efe;
-		color: var(--success-color);
-		border: 1px solid var(--success-color);
 	}
 
 	@media (max-width: 640px) {

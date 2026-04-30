@@ -209,158 +209,301 @@
 	}
 </script>
 
-<div class="container mx-auto p-6 max-w-7xl">
-	<div class="flex justify-between items-center mb-6">
-		<h1 class="text-3xl font-bold">User Role Management</h1>
-	</div>
+<svelte:head>
+	<title>User Role Management - Admin - Referee Scheduler</title>
+</svelte:head>
 
-	{#if error}
-		<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4" role="alert">
-			{error}
-		</div>
-	{/if}
-
-	{#if success}
-		<div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4" role="alert">
-			{success}
-		</div>
-	{/if}
-
-	{#if !currentUserIsSuperAdmin}
-		<div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4" role="alert">
-			<p class="font-bold">Access Restricted</p>
-			<p>You need System Admin privileges to manage user roles.</p>
-		</div>
-	{/if}
-
-	{#if loading}
-		<div class="text-center py-8">
-			<p>Loading users...</p>
-		</div>
-	{:else}
-		<div class="bg-white shadow-md rounded-lg overflow-hidden">
-			<table class="min-w-full">
-				<thead class="bg-gray-50">
-					<tr>
-						<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-						<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-						<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Roles</th>
-						<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-					</tr>
-				</thead>
-				<tbody class="bg-white divide-y divide-gray-200">
-					{#each users as user}
-						<tr>
-							<td class="px-6 py-4 whitespace-nowrap">{user.name}</td>
-							<td class="px-6 py-4 whitespace-nowrap">{user.email}</td>
-							<td class="px-6 py-4">
-								{#if user.roles && user.roles.length > 0}
-									<div class="flex flex-wrap gap-1">
-										{#each user.roles as role}
-											<span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-												{role.name}
-											</span>
-										{/each}
-									</div>
-								{:else}
-									<span class="text-gray-400 text-sm">No Roles (Profile Only)</span>
-								{/if}
-							</td>
-							<td class="px-6 py-4 whitespace-nowrap">
-								<button
-									on:click={() => openRoleModal(user)}
-									class="text-blue-600 hover:text-blue-900 font-medium"
-									disabled={!currentUserIsSuperAdmin}
-								>
-									Manage Roles
-								</button>
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		</div>
-
-		{#if users.length === 0}
-			<p class="text-center text-gray-500 py-8">No users found</p>
-		{/if}
-	{/if}
+<div class="page-header">
+	<h2>User Role Management</h2>
 </div>
 
-<!-- Role Management Modal -->
-{#if showRoleModal && selectedUser}
-	<div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" on:click={closeRoleModal}>
-		<div class="relative top-20 mx-auto p-5 border w-full max-w-2xl shadow-lg rounded-md bg-white" on:click|stopPropagation>
-			<div class="mt-3">
-				<h3 class="text-lg font-medium leading-6 text-gray-900 mb-4">
-					Manage Roles for {selectedUser.name}
-				</h3>
+{#if error}
+	<div class="alert alert-error" role="alert">{error}</div>
+{/if}
 
-				{#if selectedUser.id === currentUserId && !selectedRoles.some(id => allRoles.find(r => r.id === id)?.name === 'Super Admin')}
-					<div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4" role="alert">
-						<p class="text-sm">Warning: If you remove your own Super Admin role, you will lose access to this page.</p>
-					</div>
-				{/if}
+{#if success}
+	<div class="alert alert-success" role="alert">{success}</div>
+{/if}
 
-				<div class="mb-4">
-					<p class="text-sm text-gray-600 mb-3">Select roles to assign to this user:</p>
+{#if !currentUserIsSuperAdmin}
+	<div class="alert alert-warning" role="alert">
+		<strong>Access Restricted</strong>
+		<p>You need System Admin privileges to manage user roles.</p>
+	</div>
+{/if}
 
-					{#each allRoles as role}
-						<div class="mb-3 p-3 border rounded">
-							<label class="flex items-start cursor-pointer">
-								<input
-									type="checkbox"
-									value={role.id}
-									bind:group={selectedRoles}
-									class="mt-1 mr-3"
-								/>
-								<div class="flex-1">
-									<div class="font-medium">{role.name}</div>
-									<div class="text-sm text-gray-600 mb-2">{role.description}</div>
-
-									{#if role.permissions && role.permissions.length > 0}
-										<div class="text-xs text-gray-500">
-											<strong>Permissions:</strong>
-											<ul class="list-disc list-inside mt-1">
-												{#each role.permissions as perm}
-													<li>{getPermissionDisplayName(perm)}</li>
-												{/each}
-											</ul>
-										</div>
-									{/if}
+{#if loading}
+	<div class="loading-text">Loading users...</div>
+{:else}
+	<div class="card table-card">
+		<table class="data-table">
+			<thead>
+				<tr>
+					<th>User</th>
+					<th>Email</th>
+					<th>Roles</th>
+					<th>Actions</th>
+				</tr>
+			</thead>
+			<tbody>
+				{#each users as user}
+					<tr>
+						<td>{user.name}</td>
+						<td>{user.email}</td>
+						<td>
+							{#if user.roles && user.roles.length > 0}
+								<div class="role-badges">
+									{#each user.roles as role}
+										<span class="badge">{role.name}</span>
+									{/each}
 								</div>
-							</label>
+							{:else}
+								<span class="text-muted">No Roles (Profile Only)</span>
+							{/if}
+						</td>
+						<td>
+							<button
+								on:click={() => openRoleModal(user)}
+								class="link-btn"
+								disabled={!currentUserIsSuperAdmin}
+							>
+								Manage Roles
+							</button>
+						</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+	</div>
+
+	{#if users.length === 0}
+		<div class="empty-state">No users found</div>
+	{/if}
+{/if}
+
+{#if showRoleModal && selectedUser}
+	<div class="modal-overlay" on:click={closeRoleModal}>
+		<div class="modal" on:click|stopPropagation>
+			<h3>Manage Roles for {selectedUser.name}</h3>
+
+			{#if selectedUser.id === currentUserId && !selectedRoles.some(id => allRoles.find(r => r.id === id)?.name === 'Super Admin')}
+				<div class="alert alert-warning">
+					<p>Warning: If you remove your own Super Admin role, you will lose access to this page.</p>
+				</div>
+			{/if}
+
+			<p class="modal-description">Select roles to assign to this user:</p>
+
+			<div class="role-list">
+				{#each allRoles as role}
+					<label class="role-option">
+						<input
+							type="checkbox"
+							value={role.id}
+							bind:group={selectedRoles}
+						/>
+						<div class="role-details">
+							<div class="role-name">{role.name}</div>
+							<div class="role-description">{role.description}</div>
+
+							{#if role.permissions && role.permissions.length > 0}
+								<div class="permissions-list">
+									<strong>Permissions:</strong>
+									<ul>
+										{#each role.permissions as perm}
+											<li>{getPermissionDisplayName(perm)}</li>
+										{/each}
+									</ul>
+								</div>
+							{/if}
 						</div>
-					{/each}
-				</div>
+					</label>
+				{/each}
+			</div>
 
-				{#if selectedRoles.length === 0 && selectedUser.id !== currentUserId}
-					<div class="bg-blue-100 border border-blue-400 text-blue-700 px-4 py-3 rounded mb-4" role="alert">
-						<p class="text-sm">No roles assigned. User will only be able to edit their profile until roles are assigned.</p>
-					</div>
-				{/if}
-
-				<div class="flex justify-end gap-3 mt-4">
-					<button
-						on:click={closeRoleModal}
-						class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
-						disabled={savingRoles}
-					>
-						Cancel
-					</button>
-					<button
-						on:click={saveRoles}
-						class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400"
-						disabled={savingRoles}
-					>
-						{savingRoles ? 'Saving...' : 'Save Changes'}
-					</button>
+			{#if selectedRoles.length === 0 && selectedUser.id !== currentUserId}
+				<div class="alert alert-info">
+					<p>No roles assigned. User will only be able to edit their profile until roles are assigned.</p>
 				</div>
+			{/if}
+
+			<div class="modal-actions">
+				<button
+					on:click={closeRoleModal}
+					class="btn btn-secondary"
+					disabled={savingRoles}
+				>
+					Cancel
+				</button>
+				<button
+					on:click={saveRoles}
+					class="btn btn-primary"
+					disabled={savingRoles}
+				>
+					{savingRoles ? 'Saving...' : 'Save Changes'}
+				</button>
 			</div>
 		</div>
 	</div>
 {/if}
 
 <style>
-	/* Add any additional styles here if needed */
+	.page-header {
+		margin-bottom: 1.5rem;
+	}
+
+	h2 {
+		font-size: 1.75rem;
+		font-weight: 700;
+		color: var(--text-primary);
+	}
+
+	/* Loading & Empty */
+	.loading-text {
+		text-align: center;
+		padding: 3rem;
+		color: var(--text-secondary);
+	}
+
+	.empty-state {
+		text-align: center;
+		padding: 3rem;
+		color: var(--text-secondary);
+	}
+
+	/* Table */
+	.table-card {
+		overflow: hidden;
+		padding: 0;
+	}
+
+	/* Badges */
+	.role-badges {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+	}
+
+	.badge {
+		display: inline-block;
+		padding: 0.25rem 0.625rem;
+		border-radius: 1rem;
+		font-size: 0.75rem;
+		font-weight: 600;
+		background-color: #dbeafe;
+		color: #1e40af;
+	}
+
+	.text-muted {
+		color: var(--text-secondary);
+		font-size: 0.875rem;
+	}
+
+	.link-btn {
+		background: none;
+		border: none;
+		color: var(--primary-color);
+		font-weight: 500;
+		cursor: pointer;
+		padding: 0;
+		font-size: 0.875rem;
+	}
+
+	.link-btn:hover {
+		text-decoration: underline;
+	}
+
+	.link-btn:disabled {
+		color: var(--text-secondary);
+		cursor: not-allowed;
+	}
+
+	.link-btn:disabled:hover {
+		text-decoration: none;
+	}
+
+	/* Modal */
+	.modal {
+		max-width: 40rem;
+	}
+
+	.modal h3 {
+		font-size: 1.25rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin-bottom: 1rem;
+	}
+
+	.modal-description {
+		font-size: 0.875rem;
+		color: var(--text-secondary);
+		margin-bottom: 1rem;
+	}
+
+	.role-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+
+	.role-option {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		padding: 0.75rem;
+		border: 1px solid var(--border-color);
+		border-radius: 0.375rem;
+		cursor: pointer;
+		transition: border-color 0.2s;
+	}
+
+	.role-option:hover {
+		border-color: var(--primary-color);
+	}
+
+	.role-option input[type="checkbox"] {
+		margin-top: 0.25rem;
+	}
+
+	.role-details {
+		flex: 1;
+	}
+
+	.role-name {
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.role-description {
+		font-size: 0.875rem;
+		color: var(--text-secondary);
+		margin-bottom: 0.5rem;
+	}
+
+	.permissions-list {
+		font-size: 0.75rem;
+		color: var(--text-secondary);
+	}
+
+	.permissions-list strong {
+		display: block;
+		margin-bottom: 0.25rem;
+	}
+
+	.permissions-list ul {
+		list-style: disc;
+		padding-left: 1.25rem;
+	}
+
+	@media (max-width: 768px) {
+		.data-table th,
+		.data-table td {
+			padding: 0.75rem;
+		}
+
+		.modal {
+			padding: 1rem;
+		}
+	}
 </style>

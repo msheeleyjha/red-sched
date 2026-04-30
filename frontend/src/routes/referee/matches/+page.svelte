@@ -604,7 +604,7 @@
 
 	.filters {
 		background: white;
-		border: 1px solid #e2e8f0;
+		border: 1px solid var(--border-color);
 		border-radius: 8px;
 		padding: 1.25rem;
 		margin-bottom: 2rem;
@@ -626,24 +626,24 @@
 
 	.shortcut-label {
 		font-size: 0.875rem;
-		color: #6b7280;
+		color: var(--text-secondary);
 		font-weight: 500;
 	}
 
 	.btn-shortcut {
 		padding: 0.375rem 0.75rem;
 		font-size: 0.8rem;
-		border: 1px solid #3b82f6;
+		border: 1px solid var(--primary-color);
 		border-radius: 0.375rem;
 		background: white;
-		color: #3b82f6;
+		color: var(--primary-color);
 		cursor: pointer;
 		font-weight: 500;
 		transition: all 0.2s;
 	}
 
 	.btn-shortcut:hover {
-		background: #3b82f6;
+		background: var(--primary-color);
 		color: white;
 	}
 
@@ -653,7 +653,7 @@
 		align-items: center;
 		margin-top: 1rem;
 		padding-top: 0.75rem;
-		border-top: 1px solid #e2e8f0;
+		border-top: 1px solid var(--border-color);
 	}
 
 	.filter-actions {
@@ -667,7 +667,7 @@
 		align-items: center;
 		gap: 0.375rem;
 		font-size: 0.875rem;
-		color: #6b7280;
+		color: var(--text-secondary);
 	}
 
 	.per-page-selector label {
@@ -677,7 +677,7 @@
 
 	.per-page-selector select {
 		padding: 0.25rem 0.375rem;
-		border: 1px solid #d1d5db;
+		border: 1px solid var(--border-color);
 		border-radius: 0.25rem;
 		font-size: 0.875rem;
 	}
@@ -691,25 +691,25 @@
 		display: block;
 		margin-bottom: 0.5rem;
 		font-weight: 500;
-		color: #374151;
+		color: var(--text-primary);
 	}
 
 	.filter-group input[type='date'] {
 		width: 100%;
 		padding: 0.75rem;
-		border: 1px solid #d1d5db;
+		border: 1px solid var(--border-color);
 		border-radius: 0.375rem;
 		font-size: 1rem;
 		font-family: inherit;
 	}
 
 	.stats {
-		color: #6b7280;
+		color: var(--text-secondary);
 		padding: 0.75rem 0;
 	}
 
 	.page-info {
-		color: #6b7280;
+		color: var(--text-secondary);
 	}
 
 	.btn-small {
@@ -756,7 +756,7 @@
 		align-items: center;
 		margin-bottom: 1rem;
 		padding-bottom: 0.5rem;
-		border-bottom: 2px solid #e2e8f0;
+		border-bottom: 2px solid var(--border-color);
 		gap: 1rem;
 		flex-wrap: wrap;
 	}
@@ -770,9 +770,9 @@
 
 	.btn-day-toggle {
 		padding: 0.5rem 1rem;
-		background-color: #f3f4f6;
-		color: #374151;
-		border: 1px solid #d1d5db;
+		background-color: var(--bg-secondary);
+		color: var(--text-primary);
+		border: 1px solid var(--border-color);
 		border-radius: 0.375rem;
 		font-size: 0.875rem;
 		font-weight: 500;
@@ -782,7 +782,7 @@
 	}
 
 	.btn-day-toggle:hover:not(:disabled) {
-		background-color: #e5e7eb;
+		background-color: var(--border-color);
 		border-color: #9ca3af;
 	}
 
@@ -792,9 +792,9 @@
 	}
 
 	.btn-day-unavailable {
-		background-color: #fef2f2;
+		background-color: var(--error-light);
 		color: #991b1b;
-		border-color: #ef4444;
+		border-color: var(--error-color);
 		font-weight: 600;
 	}
 
@@ -811,7 +811,7 @@
 
 	.match-card {
 		background: white;
-		border: 2px solid #e2e8f0;
+		border: 2px solid var(--border-color);
 		border-radius: 8px;
 		padding: 1rem;
 		transition: all 0.2s;
@@ -823,8 +823,8 @@
 	}
 
 	.match-card.unavailable {
-		border-color: #ef4444;
-		background-color: #fef2f2;
+		border-color: var(--error-color);
+		background-color: var(--error-light);
 	}
 
 	.match-header {
@@ -849,7 +849,7 @@
 
 	.age-badge {
 		display: inline-block;
-		background: #3b82f6;
+		background: var(--primary-color);
 		color: white;
 		padding: 0.25rem 0.5rem;
 		border-radius: 4px;
@@ -892,29 +892,29 @@
 	}
 
 	.btn-unavailable.active {
-		background: #ef4444;
+		background: var(--error-color);
 		color: white;
-		border-color: #ef4444;
+		border-color: var(--error-color);
 	}
 
 	.btn-unavailable:hover:not(.active) {
-		border-color: #ef4444;
-		color: #ef4444;
+		border-color: var(--error-color);
+		color: var(--error-color);
 	}
 
 	.btn-clear {
-		color: #6b7280; /* Ensure icon is visible when not active */
+		color: var(--text-secondary); /* Ensure icon is visible when not active */
 	}
 
 	.btn-clear.active {
-		background: #6b7280;
+		background: var(--text-secondary);
 		color: white;
-		border-color: #6b7280;
+		border-color: var(--text-secondary);
 	}
 
 	.btn-clear:hover:not(.active) {
-		border-color: #6b7280;
-		color: #6b7280;
+		border-color: var(--text-secondary);
+		color: var(--text-secondary);
 	}
 
 	.match-details {
@@ -948,24 +948,24 @@
 	}
 
 	.team-name {
-		color: #374151;
+		color: var(--text-primary);
 		font-weight: 500;
 	}
 
 	.eligible-roles {
 		margin-top: 0.25rem;
 		padding-top: 0.5rem;
-		border-top: 1px solid #e2e8f0;
+		border-top: 1px solid var(--border-color);
 	}
 
 	.small-text {
 		font-size: 0.85rem;
-		color: #6b7280;
+		color: var(--text-secondary);
 	}
 
 	.day-unavailable-message {
-		background: #fef2f2;
-		border: 2px solid #ef4444;
+		background: var(--error-light);
+		border: 2px solid var(--error-color);
 		border-radius: 8px;
 		padding: 1.5rem;
 		text-align: center;
@@ -984,8 +984,8 @@
 	}
 
 	.info-box {
-		background: #f3f4f6;
-		border: 1px solid #d1d5db;
+		background: var(--bg-secondary);
+		border: 1px solid var(--border-color);
 		border-radius: 8px;
 		padding: 1.5rem;
 		text-align: center;
@@ -996,14 +996,13 @@
 	}
 
 	.error {
-		background: #fef2f2;
+		background: var(--error-light);
 		border: 1px solid #fecaca;
 		border-radius: 8px;
 		padding: 1rem;
 		color: #991b1b;
 	}
 
-	.btn-primary,
 	.btn-secondary {
 		display: inline-block;
 		padding: 0.5rem 1rem;
@@ -1012,26 +1011,13 @@
 		font-weight: 500;
 		cursor: pointer;
 		transition: all 0.2s;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		color: white;
-		border: none;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
-	}
-
-	.btn-secondary {
 		background: white;
-		color: #3b82f6;
-		border: 2px solid #3b82f6;
+		color: var(--primary-color);
+		border: 2px solid var(--primary-color);
 	}
 
 	.btn-secondary:hover {
-		background: #eff6ff;
+		background: var(--primary-light);
 	}
 
 	.pagination {
@@ -1053,30 +1039,30 @@
 		min-width: 2.25rem;
 		height: 2.25rem;
 		padding: 0 0.5rem;
-		border: 1px solid #d1d5db;
+		border: 1px solid var(--border-color);
 		border-radius: 0.375rem;
 		background: white;
 		cursor: pointer;
 		font-size: 0.875rem;
 		font-weight: 500;
-		color: #374151;
+		color: var(--text-primary);
 		transition: all 0.2s;
 	}
 
 	.page-btn:hover {
-		background-color: #f3f4f6;
-		border-color: #3b82f6;
+		background-color: var(--bg-secondary);
+		border-color: var(--primary-color);
 	}
 
 	.page-btn.active {
-		background-color: #3b82f6;
+		background-color: var(--primary-color);
 		color: white;
-		border-color: #3b82f6;
+		border-color: var(--primary-color);
 	}
 
 	.page-ellipsis {
 		padding: 0 0.25rem;
-		color: #6b7280;
+		color: var(--text-secondary);
 	}
 
 	@media (max-width: 768px) {

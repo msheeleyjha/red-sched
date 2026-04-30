@@ -1,28 +1,29 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/stores';
-	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { LayoutData } from './$types';
 
 	export let data: LayoutData;
 
-	let user = data.user;
+	$: user = data.user;
 
-	onMount(() => {
-		// Check if user needs to be redirected based on role
-		if (user && $page.url.pathname === '/') {
-			redirectBasedOnRole(user.role);
-		}
-	});
+	const pendingAllowedPaths = ['/pending', '/referee/profile', '/auth'];
 
-	function redirectBasedOnRole(role: string) {
-		if (role === 'assignor') {
-			goto('/assignor');
-		} else if (role === 'referee') {
-			goto('/referee');
-		} else if (role === 'pending_referee') {
-			goto('/pending');
+	$: {
+		const path = $page.url.pathname;
+		if (user) {
+			if (path === '/') {
+				if (user.role === 'pending_referee') {
+					goto('/pending');
+				} else {
+					goto('/dashboard');
+				}
+			} else if (user.role === 'pending_referee' && !pendingAllowedPaths.some(p => path.startsWith(p))) {
+				goto('/pending');
+			} else if (path.startsWith('/admin') && user.role !== 'assignor') {
+				goto('/dashboard');
+			}
 		}
 	}
 </script>

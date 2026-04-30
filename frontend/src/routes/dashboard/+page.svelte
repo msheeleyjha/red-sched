@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 
 	const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
@@ -104,6 +104,7 @@
 				method: 'POST',
 				credentials: 'include'
 			});
+			await invalidateAll();
 			goto('/');
 		} catch (error) {
 			console.error('Logout error:', error);
@@ -203,6 +204,11 @@
 						<div class="nav-icon">👤</div>
 						<div class="nav-title">My Profile</div>
 						<div class="nav-description">Update your information</div>
+					</a>
+					<a href="/admin/users" class="nav-card nav-card-admin">
+						<div class="nav-icon">🛡️</div>
+						<div class="nav-title">Admin</div>
+						<div class="nav-description">Users, roles, and audit logs</div>
 					</a>
 				{:else}
 					<a href="/referee/assignments" class="nav-card">
@@ -414,6 +420,15 @@
 		transform: translateY(-2px);
 	}
 
+	.nav-card-admin {
+		background-color: var(--primary-light);
+		border-color: #bfdbfe;
+	}
+
+	.nav-card-admin:hover {
+		border-color: var(--primary-color);
+	}
+
 	.nav-icon {
 		font-size: 2.5rem;
 		margin-bottom: 0.75rem;
@@ -463,13 +478,13 @@
 	}
 
 	.match-item.assigned {
-		border-color: #3b82f6;
-		background-color: #eff6ff;
+		border-color: var(--primary-color);
+		background-color: var(--primary-light);
 	}
 
 	.match-item.unmarked {
-		border-color: #f59e0b;
-		background-color: #fffbeb;
+		border-color: var(--warning-color);
+		background-color: var(--warning-light);
 	}
 
 	.match-header {
@@ -489,7 +504,7 @@
 
 	.match-role {
 		padding: 0.25rem 0.75rem;
-		background-color: #3b82f6;
+		background-color: var(--primary-color);
 		color: white;
 		border-radius: 0.375rem;
 		font-size: 0.875rem;
@@ -530,7 +545,7 @@
 
 	.age-badge {
 		padding: 0.25rem 0.5rem;
-		background-color: #3b82f6;
+		background-color: var(--primary-color);
 		color: white;
 		border-radius: 0.375rem;
 		font-size: 0.875rem;
@@ -572,7 +587,7 @@
 	}
 
 	.error-box {
-		background-color: #fef2f2;
+		background-color: var(--error-light);
 		border: 1px solid #fecaca;
 		border-radius: 0.5rem;
 		padding: 1rem;
@@ -580,27 +595,12 @@
 	}
 
 	.info-box {
-		background-color: #f3f4f6;
-		border: 1px solid #d1d5db;
+		background-color: var(--bg-secondary);
+		border: 1px solid var(--border-color);
 		border-radius: 0.5rem;
 		padding: 1.5rem;
 		text-align: center;
 		color: var(--text-secondary);
-	}
-
-	.btn-secondary {
-		background-color: white;
-		color: var(--text-primary);
-		border: 1px solid var(--border-color);
-		padding: 0.5rem 1rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-weight: 500;
-		transition: all 0.2s;
-	}
-
-	.btn-secondary:hover {
-		background-color: var(--bg-secondary);
 	}
 
 	@media (max-width: 768px) {
