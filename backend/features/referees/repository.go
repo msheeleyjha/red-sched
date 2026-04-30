@@ -21,6 +21,12 @@ type RepositoryInterface interface {
 
 	// HasUpcomingAssignments checks if a referee has upcoming match assignments
 	HasUpcomingAssignments(ctx context.Context, refereeID int64) (bool, error)
+
+	// AssignRBACRole assigns an RBAC role to a user by role name
+	AssignRBACRole(ctx context.Context, userID int64, roleName string) error
+
+	// RemoveRBACRole removes an RBAC role from a user by role name
+	RemoveRBACRole(ctx context.Context, userID int64, roleName string) error
 }
 
 // Repository handles referee data access
@@ -193,6 +199,31 @@ func (r *Repository) HasUpcomingAssignments(ctx context.Context, refereeID int64
 	}
 
 	return hasAssignments, nil
+}
+
+// AssignRBACRole assigns an RBAC role to a user by role name
+func (r *Repository) AssignRBACRole(ctx context.Context, userID int64, roleName string) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO user_roles (user_id, role_id)
+		SELECT $1, id FROM roles WHERE name = $2
+		ON CONFLICT (user_id, role_id) DO NOTHING
+	`, userID, roleName)
+	if err != nil {
+		return fmt.Errorf("failed to assign RBAC role %s: %w", roleName, err)
+	}
+	return nil
+}
+
+// RemoveRBACRole removes an RBAC role from a user by role name
+func (r *Repository) RemoveRBACRole(ctx context.Context, userID int64, roleName string) error {
+	_, err := r.db.ExecContext(ctx, `
+		DELETE FROM user_roles
+		WHERE user_id = $1 AND role_id = (SELECT id FROM roles WHERE name = $2)
+	`, userID, roleName)
+	if err != nil {
+		return fmt.Errorf("failed to remove RBAC role %s: %w", roleName, err)
+	}
+	return nil
 }
 
 // DetermineCertStatus determines the certification status based on certification and expiry

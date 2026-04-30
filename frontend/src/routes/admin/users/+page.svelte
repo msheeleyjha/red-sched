@@ -38,12 +38,14 @@
 
 	// Modal state
 	let showRoleModal = false;
+	let showDeleteModal = false;
 	let selectedUser: User | null = null;
 	let selectedRoles: number[] = [];
 	let savingRoles = false;
+	let deleting = false;
 
 	$: currentUserId = data.user?.id;
-	$: currentUserIsSuperAdmin = data.user?.role === 'assignor' || false; // TODO: Update when RBAC is live
+	$: currentUserIsSuperAdmin = data.user?.role === 'assignor' || false;
 
 	onMount(async () => {
 		await Promise.all([loadUsers(), loadRoles(), loadPermissions()]);
@@ -196,6 +198,44 @@
 		}
 	}
 
+	function openDeleteModal(user: User) {
+		selectedUser = user;
+		showDeleteModal = true;
+	}
+
+	function closeDeleteModal() {
+		showDeleteModal = false;
+		selectedUser = null;
+	}
+
+	async function deleteUser() {
+		if (!selectedUser) return;
+
+		deleting = true;
+		error = '';
+
+		try {
+			const response = await fetch(`${API_URL}/api/admin/users/${selectedUser.id}`, {
+				method: 'DELETE',
+				credentials: 'include'
+			});
+
+			if (response.ok) {
+				success = `User ${selectedUser.name} has been permanently deleted`;
+				closeDeleteModal();
+				await loadUsers();
+				setTimeout(() => { success = ''; }, 3000);
+			} else {
+				const text = await response.text();
+				error = text || 'Failed to delete user';
+			}
+		} catch (err) {
+			error = 'Failed to delete user';
+		} finally {
+			deleting = false;
+		}
+	}
+
 	function getRoleName(roleId: number): string {
 		return allRoles.find(r => r.id === roleId)?.name || 'Unknown';
 	}
@@ -262,13 +302,24 @@
 							{/if}
 						</td>
 						<td>
-							<button
-								on:click={() => openRoleModal(user)}
-								class="link-btn"
-								disabled={!currentUserIsSuperAdmin}
-							>
-								Manage Roles
-							</button>
+							<div class="action-buttons">
+								<button
+									on:click={() => openRoleModal(user)}
+									class="link-btn"
+									disabled={!currentUserIsSuperAdmin}
+								>
+									Manage Roles
+								</button>
+								{#if user.id !== currentUserId}
+									<button
+										on:click={() => openDeleteModal(user)}
+										class="link-btn link-btn-danger"
+										disabled={!currentUserIsSuperAdmin}
+									>
+										Delete
+									</button>
+								{/if}
+							</div>
 						</td>
 					</tr>
 				{/each}
@@ -279,6 +330,36 @@
 	{#if users.length === 0}
 		<div class="empty-state">No users found</div>
 	{/if}
+{/if}
+
+{#if showDeleteModal && selectedUser}
+	<div class="modal-overlay" on:click={closeDeleteModal}>
+		<div class="modal modal-delete" on:click|stopPropagation>
+			<h3>Delete User</h3>
+			<div class="alert alert-error">
+				<p><strong>Warning:</strong> This action is permanent and cannot be undone.</p>
+			</div>
+			<p>Are you sure you want to permanently delete <strong>{selectedUser.name}</strong> ({selectedUser.email})?</p>
+			<p class="delete-details">This will remove the user and all associated data including roles, availability records, and assignment history.</p>
+
+			<div class="modal-actions">
+				<button
+					on:click={closeDeleteModal}
+					class="btn btn-secondary"
+					disabled={deleting}
+				>
+					Cancel
+				</button>
+				<button
+					on:click={deleteUser}
+					class="btn btn-danger"
+					disabled={deleting}
+				>
+					{deleting ? 'Deleting...' : 'Delete Permanently'}
+				</button>
+			</div>
+		</div>
+	</div>
 {/if}
 
 {#if showRoleModal && selectedUser}
@@ -420,6 +501,33 @@
 
 	.link-btn:disabled:hover {
 		text-decoration: none;
+	}
+
+	.link-btn-danger {
+		color: var(--error-color);
+	}
+
+	.link-btn-danger:hover {
+		color: #b91c1c;
+	}
+
+	.link-btn-danger:disabled {
+		color: var(--text-secondary);
+	}
+
+	.action-buttons {
+		display: flex;
+		gap: 0.75rem;
+	}
+
+	.delete-details {
+		font-size: 0.875rem;
+		color: var(--text-secondary);
+		margin-top: 0.5rem;
+	}
+
+	.modal-delete {
+		max-width: 30rem;
 	}
 
 	/* Modal */

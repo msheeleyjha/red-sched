@@ -18,16 +18,8 @@ func NewService(repo RepositoryInterface) *Service {
 
 // ValidStatuses are the allowed status values
 var ValidStatuses = map[string]bool{
-	"pending":  true,
 	"active":   true,
 	"inactive": true,
-	"removed":  true,
-}
-
-// ValidRoles are the allowed role values
-var ValidRoles = map[string]bool{
-	"referee":  true,
-	"assignor": true,
 }
 
 // ValidGrades are the allowed grade values
@@ -49,7 +41,6 @@ func (s *Service) List(ctx context.Context) ([]RefereeListItem, error) {
 
 // Update updates a referee with validation
 func (s *Service) Update(ctx context.Context, refereeID int64, currentUserID int64, req *UpdateRequest) (*UpdateResult, error) {
-	// Get current referee
 	referee, err := s.repo.FindByID(ctx, refereeID)
 	if err != nil {
 		return nil, errors.NewInternal("Failed to find referee", err)
@@ -58,28 +49,22 @@ func (s *Service) Update(ctx context.Context, refereeID int64, currentUserID int
 		return nil, errors.NewNotFound("Referee")
 	}
 
-	// Validate that we have at least one update
-	if req.Status == nil && req.Role == nil && req.Grade == nil {
+	if req.Status == nil && req.Grade == nil {
 		return nil, errors.NewBadRequest("No updates provided")
 	}
 
-	// Don't allow assignors to modify other assignors (except to demote them)
+	// Don't allow modifying assignors through referee management
 	if referee.Role == "assignor" && currentUserID != referee.ID {
-		// Allow changing role from assignor to referee, but nothing else
-		if req.Role == nil || *req.Role == "assignor" {
-			return nil, errors.NewForbidden("Cannot modify other assignor accounts")
-		}
+		return nil, errors.NewForbidden("Cannot modify assignor accounts through referee management")
 	}
 
-	// Prevent self-deactivation
 	if currentUserID == refereeID && req.Status != nil {
-		if *req.Status == "inactive" || *req.Status == "removed" {
+		if *req.Status == "inactive" {
 			return nil, errors.NewForbidden("Cannot deactivate your own account")
 		}
 	}
 
-	// Check for upcoming assignments before allowing deactivation
-	if req.Status != nil && (*req.Status == "inactive" || *req.Status == "removed") {
+	if req.Status != nil && *req.Status == "inactive" {
 		hasUpcoming, err := s.repo.HasUpcomingAssignments(ctx, refereeID)
 		if err != nil {
 			return nil, errors.NewInternal("Failed to check for upcoming assignments", err)
@@ -89,43 +74,21 @@ func (s *Service) Update(ctx context.Context, refereeID int64, currentUserID int
 		}
 	}
 
-	// Build updates map
 	updates := make(map[string]interface{})
 
-	// Validate and add status
 	if req.Status != nil {
 		if !ValidStatuses[*req.Status] {
-			return nil, errors.NewBadRequest("Invalid status. Must be: pending, active, inactive, or removed")
+			return nil, errors.NewBadRequest("Invalid status. Must be: active or inactive")
 		}
 		updates["status"] = *req.Status
 
-		// When activating a pending_referee, promote to referee role (if no explicit role change)
-		if *req.Status == "active" && referee.Role == "pending_referee" && req.Role == nil {
+		if *req.Status == "active" && (referee.Role == "pending_referee" || referee.Status == "inactive") {
 			updates["role"] = "referee"
 		}
 	}
 
-	// Validate and add role
-	if req.Role != nil {
-		if !ValidRoles[*req.Role] {
-			return nil, errors.NewBadRequest("Invalid role. Must be: referee or assignor")
-		}
-
-		// Only apply role change if different from current
-		if referee.Role != *req.Role {
-			updates["role"] = *req.Role
-
-			// When promoting to assignor, ensure status is active
-			if *req.Role == "assignor" && referee.Status != "active" && req.Status == nil {
-				updates["status"] = "active"
-			}
-		}
-	}
-
-	// Validate and add grade
 	if req.Grade != nil {
 		if *req.Grade == "" {
-			// Allow setting grade to NULL
 			updates["grade"] = nil
 		} else {
 			if !ValidGrades[*req.Grade] {
@@ -135,15 +98,26 @@ func (s *Service) Update(ctx context.Context, refereeID int64, currentUserID int
 		}
 	}
 
-	// Ensure we have updates after processing
 	if len(updates) == 0 {
 		return nil, errors.NewBadRequest("No valid updates provided")
 	}
 
-	// Execute update
 	result, err := s.repo.Update(ctx, refereeID, updates)
 	if err != nil {
 		return nil, errors.NewInternal("Failed to update referee", err)
+	}
+
+	// Manage RBAC roles based on status changes
+	if req.Status != nil {
+		if *req.Status == "active" {
+			if err := s.repo.AssignRBACRole(ctx, refereeID, "Referee"); err != nil {
+				return nil, errors.NewInternal("Failed to assign referee role", err)
+			}
+		} else if *req.Status == "inactive" {
+			if err := s.repo.RemoveRBACRole(ctx, refereeID, "Referee"); err != nil {
+				return nil, errors.NewInternal("Failed to remove referee role", err)
+			}
+		}
 	}
 
 	return result, nil

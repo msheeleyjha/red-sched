@@ -21,9 +21,8 @@ type RefereeListItem struct {
 
 // UpdateRequest represents the update payload from assignor
 type UpdateRequest struct {
-	Status *string `json:"status"` // active, inactive, removed
+	Status *string `json:"status"` // active, inactive
 	Grade  *string `json:"grade"`  // Junior, Mid, Senior, or null
-	Role   *string `json:"role"`   // referee, assignor
 }
 
 // UpdateResult represents the result of an update operation

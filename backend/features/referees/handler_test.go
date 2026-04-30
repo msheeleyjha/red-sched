@@ -407,38 +407,6 @@ func TestUpdateReferee_InvalidStatus(t *testing.T) {
 	}
 }
 
-func TestUpdateReferee_InvalidRole(t *testing.T) {
-	service := &mockService{
-		UpdateFunc: func(ctx context.Context, refereeID int64, currentUserID int64, req *UpdateRequest) (*UpdateResult, error) {
-			return nil, appErrors.NewBadRequest("Invalid role. Must be: referee or assignor")
-		},
-	}
-
-	handler := NewHandler(service)
-
-	role := "admin"
-	reqBody := UpdateRequest{
-		Role: &role,
-	}
-	body, _ := json.Marshal(reqBody)
-
-	req := httptest.NewRequest("PUT", "/api/referees/1", bytes.NewReader(body))
-	req = mux.SetURLVars(req, map[string]string{"id": "1"})
-
-	ctx := middleware.SetUserInContext(req.Context(), &middleware.User{
-		ID:   100,
-		Role: "assignor",
-	})
-	req = req.WithContext(ctx)
-
-	rr := httptest.NewRecorder()
-	handler.UpdateReferee(rr, req)
-
-	if rr.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got: %d", rr.Code)
-	}
-}
-
 func TestUpdateReferee_InvalidGrade(t *testing.T) {
 	service := &mockService{
 		UpdateFunc: func(ctx context.Context, refereeID int64, currentUserID int64, req *UpdateRequest) (*UpdateResult, error) {

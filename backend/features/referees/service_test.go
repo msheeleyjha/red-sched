@@ -15,6 +15,8 @@ type mockRepository struct {
 	FindByIDFunc                 func(ctx context.Context, id int64) (*RefereeData, error)
 	UpdateFunc                   func(ctx context.Context, id int64, updates map[string]interface{}) (*UpdateResult, error)
 	HasUpcomingAssignmentsFunc   func(ctx context.Context, refereeID int64) (bool, error)
+	AssignRBACRoleFunc           func(ctx context.Context, userID int64, roleName string) error
+	RemoveRBACRoleFunc           func(ctx context.Context, userID int64, roleName string) error
 }
 
 func (m *mockRepository) List(ctx context.Context) ([]RefereeListItem, error) {
@@ -43,6 +45,20 @@ func (m *mockRepository) HasUpcomingAssignments(ctx context.Context, refereeID i
 		return m.HasUpcomingAssignmentsFunc(ctx, refereeID)
 	}
 	return false, errors.New("HasUpcomingAssignments not implemented")
+}
+
+func (m *mockRepository) AssignRBACRole(ctx context.Context, userID int64, roleName string) error {
+	if m.AssignRBACRoleFunc != nil {
+		return m.AssignRBACRoleFunc(ctx, userID, roleName)
+	}
+	return nil
+}
+
+func (m *mockRepository) RemoveRBACRole(ctx context.Context, userID int64, roleName string) error {
+	if m.RemoveRBACRoleFunc != nil {
+		return m.RemoveRBACRoleFunc(ctx, userID, roleName)
+	}
+	return nil
 }
 
 func TestList_Success(t *testing.T) {
@@ -289,55 +305,6 @@ func TestUpdate_CannotModifyOtherAssignor(t *testing.T) {
 	}
 }
 
-func TestUpdate_CanDemoteOtherAssignor(t *testing.T) {
-	repo := &mockRepository{
-		FindByIDFunc: func(ctx context.Context, id int64) (*RefereeData, error) {
-			return &RefereeData{
-				ID:     2,
-				Email:  "assignor@example.com",
-				Name:   "Other Assignor",
-				Role:   "assignor",
-				Status: "active",
-			}, nil
-		},
-		HasUpcomingAssignmentsFunc: func(ctx context.Context, refereeID int64) (bool, error) {
-			return false, nil
-		},
-		UpdateFunc: func(ctx context.Context, id int64, updates map[string]interface{}) (*UpdateResult, error) {
-			return &UpdateResult{
-				ID:     2,
-				Email:  "assignor@example.com",
-				Name:   "Other Assignor",
-				Role:   "referee",
-				Status: "active",
-			}, nil
-		},
-	}
-
-	service := NewService(repo)
-	ctx := context.Background()
-
-	role := "referee"
-	req := &UpdateRequest{
-		Role: &role,
-	}
-
-	// Should be allowed to demote assignor to referee
-	result, err := service.Update(ctx, 2, 1, req)
-
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	if result == nil {
-		t.Fatal("Expected result, got nil")
-	}
-
-	if result.Role != "referee" {
-		t.Errorf("Expected role referee, got: %s", result.Role)
-	}
-}
-
 func TestUpdate_CannotDeactivateSelf(t *testing.T) {
 	repo := &mockRepository{
 		FindByIDFunc: func(ctx context.Context, id int64) (*RefereeData, error) {
@@ -345,7 +312,7 @@ func TestUpdate_CannotDeactivateSelf(t *testing.T) {
 				ID:     1,
 				Email:  "self@example.com",
 				Name:   "Self",
-				Role:   "assignor",
+				Role:   "referee",
 				Status: "active",
 			}, nil
 		},
@@ -359,7 +326,6 @@ func TestUpdate_CannotDeactivateSelf(t *testing.T) {
 		Status: &status,
 	}
 
-	// Try to deactivate self (user ID=1, referee ID=1)
 	result, err := service.Update(ctx, 1, 1, req)
 
 	if err == nil {
@@ -424,7 +390,8 @@ func TestUpdate_CannotDeactivateWithUpcomingAssignments(t *testing.T) {
 	}
 }
 
-func TestUpdate_AutoPromotePendingReferee(t *testing.T) {
+func TestUpdate_ActivatePendingRefereeAssignsRBACRole(t *testing.T) {
+	rbacAssigned := false
 	repo := &mockRepository{
 		FindByIDFunc: func(ctx context.Context, id int64) (*RefereeData, error) {
 			return &RefereeData{
@@ -439,7 +406,6 @@ func TestUpdate_AutoPromotePendingReferee(t *testing.T) {
 			return false, nil
 		},
 		UpdateFunc: func(ctx context.Context, id int64, updates map[string]interface{}) (*UpdateResult, error) {
-			// Should have both status=active and role=referee
 			if updates["status"] != "active" {
 				t.Errorf("Expected status=active in updates, got: %v", updates["status"])
 			}
@@ -455,92 +421,83 @@ func TestUpdate_AutoPromotePendingReferee(t *testing.T) {
 				Status: "active",
 			}, nil
 		},
+		AssignRBACRoleFunc: func(ctx context.Context, userID int64, roleName string) error {
+			if roleName != "Referee" {
+				t.Errorf("Expected RBAC role 'Referee', got: %s", roleName)
+			}
+			rbacAssigned = true
+			return nil
+		},
 	}
 
 	service := NewService(repo)
 	ctx := context.Background()
 
 	status := "active"
-	req := &UpdateRequest{
-		Status: &status,
-	}
+	req := &UpdateRequest{Status: &status}
 
 	result, err := service.Update(ctx, 1, 100, req)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
-
 	if result == nil {
 		t.Fatal("Expected result, got nil")
 	}
-
-	if result.Role != "referee" {
-		t.Errorf("Expected role referee, got: %s", result.Role)
-	}
-
-	if result.Status != "active" {
-		t.Errorf("Expected status active, got: %s", result.Status)
+	if !rbacAssigned {
+		t.Error("Expected RBAC Referee role to be assigned")
 	}
 }
 
-func TestUpdate_AutoActivateWhenPromotingToAssignor(t *testing.T) {
+func TestUpdate_DeactivateRemovesRBACRole(t *testing.T) {
+	rbacRemoved := false
 	repo := &mockRepository{
 		FindByIDFunc: func(ctx context.Context, id int64) (*RefereeData, error) {
 			return &RefereeData{
-				ID:     1,
+				ID:     2,
 				Email:  "ref@example.com",
-				Name:   "Referee",
+				Name:   "Active Referee",
 				Role:   "referee",
-				Status: "pending",
+				Status: "active",
 			}, nil
 		},
 		HasUpcomingAssignmentsFunc: func(ctx context.Context, refereeID int64) (bool, error) {
 			return false, nil
 		},
 		UpdateFunc: func(ctx context.Context, id int64, updates map[string]interface{}) (*UpdateResult, error) {
-			// Should have both role=assignor and status=active
-			if updates["role"] != "assignor" {
-				t.Errorf("Expected role=assignor in updates, got: %v", updates["role"])
-			}
-			if updates["status"] != "active" {
-				t.Errorf("Expected status=active in updates, got: %v", updates["status"])
-			}
-
 			return &UpdateResult{
-				ID:     1,
+				ID:     2,
 				Email:  "ref@example.com",
-				Name:   "Referee",
-				Role:   "assignor",
-				Status: "active",
+				Name:   "Active Referee",
+				Role:   "referee",
+				Status: "inactive",
 			}, nil
+		},
+		RemoveRBACRoleFunc: func(ctx context.Context, userID int64, roleName string) error {
+			if roleName != "Referee" {
+				t.Errorf("Expected RBAC role 'Referee', got: %s", roleName)
+			}
+			rbacRemoved = true
+			return nil
 		},
 	}
 
 	service := NewService(repo)
 	ctx := context.Background()
 
-	role := "assignor"
-	req := &UpdateRequest{
-		Role: &role,
-	}
+	status := "inactive"
+	req := &UpdateRequest{Status: &status}
 
-	result, err := service.Update(ctx, 1, 100, req)
+	result, err := service.Update(ctx, 2, 1, req)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
-
 	if result == nil {
 		t.Fatal("Expected result, got nil")
 	}
-
-	if result.Role != "assignor" {
-		t.Errorf("Expected role assignor, got: %s", result.Role)
-	}
-
-	if result.Status != "active" {
-		t.Errorf("Expected status active, got: %s", result.Status)
+	if !rbacRemoved {
+		t.Error("Expected RBAC Referee role to be removed")
 	}
 }
 
@@ -563,47 +520,6 @@ func TestUpdate_InvalidStatus(t *testing.T) {
 	status := "invalid_status"
 	req := &UpdateRequest{
 		Status: &status,
-	}
-
-	result, err := service.Update(ctx, 1, 100, req)
-
-	if err == nil {
-		t.Fatal("Expected error, got nil")
-	}
-
-	if result != nil {
-		t.Errorf("Expected nil result, got: %v", result)
-	}
-
-	appErr, ok := err.(*appErrors.AppError)
-	if !ok {
-		t.Fatalf("Expected AppError, got: %T", err)
-	}
-
-	if appErr.StatusCode != 400 {
-		t.Errorf("Expected 400 BadRequest, got: %d", appErr.StatusCode)
-	}
-}
-
-func TestUpdate_InvalidRole(t *testing.T) {
-	repo := &mockRepository{
-		FindByIDFunc: func(ctx context.Context, id int64) (*RefereeData, error) {
-			return &RefereeData{
-				ID:     1,
-				Email:  "ref@example.com",
-				Name:   "Referee",
-				Role:   "referee",
-				Status: "active",
-			}, nil
-		},
-	}
-
-	service := NewService(repo)
-	ctx := context.Background()
-
-	role := "admin"
-	req := &UpdateRequest{
-		Role: &role,
 	}
 
 	result, err := service.Update(ctx, 1, 100, req)

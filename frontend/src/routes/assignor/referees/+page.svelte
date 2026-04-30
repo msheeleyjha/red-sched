@@ -12,7 +12,6 @@
 	let filteredReferees: any[] = [];
 	let searchTerm = '';
 	let statusFilter = 'all';
-	let showAssignors = true;
 	let error = '';
 
 	$: currentUserId = data.user?.id;
@@ -31,7 +30,7 @@
 			});
 
 			if (response.ok) {
-				referees = await response.json();
+				referees = (await response.json()).filter((ref: any) => ref.role !== 'assignor');
 				filterReferees();
 			} else {
 				error = 'Failed to load referees';
@@ -46,17 +45,10 @@
 	function filterReferees() {
 		let filtered = referees;
 
-		// Filter assignors if needed
-		if (!showAssignors) {
-			filtered = filtered.filter((ref) => ref.role !== 'assignor');
-		}
-
-		// Filter by status
 		if (statusFilter !== 'all') {
 			filtered = filtered.filter((ref) => ref.status === statusFilter);
 		}
 
-		// Filter by search term
 		if (searchTerm.trim()) {
 			const term = searchTerm.toLowerCase();
 			filtered = filtered.filter(
@@ -94,48 +86,19 @@
 	}
 
 	function handleStatusChange(refereeId: number, newStatus: string) {
-		// Prevent self-deactivation
-		if (refereeId === currentUserId && (newStatus === 'inactive' || newStatus === 'removed')) {
+		if (refereeId === currentUserId && newStatus === 'inactive') {
 			alert('You cannot deactivate your own account.');
 			return;
 		}
 
 		if (
-			newStatus === 'removed' &&
-			!confirm('Are you sure you want to remove this referee? This cannot be undone.')
-		) {
-			return;
-		}
-
-		if (
 			newStatus === 'inactive' &&
-			!confirm('Are you sure you want to deactivate this referee?')
+			!confirm('Are you sure you want to deactivate this referee? Their RBAC Referee role will be removed.')
 		) {
 			return;
 		}
 
 		updateReferee(refereeId, { status: newStatus });
-	}
-
-	function handleRoleChange(refereeId: number, newRole: string) {
-		const referee = referees.find(r => r.id === refereeId);
-		const oldRole = referee?.role;
-
-		if (oldRole === newRole) {
-			return;
-		}
-
-		if (newRole === 'assignor') {
-			if (!confirm('Are you sure you want to promote this user to Assignor? They will have full access to manage referees and assignments.')) {
-				return;
-			}
-		} else if (oldRole === 'assignor') {
-			if (!confirm('Are you sure you want to demote this Assignor to Referee?')) {
-				return;
-			}
-		}
-
-		updateReferee(refereeId, { role: newRole });
 	}
 
 	function handleGradeChange(refereeId: number, newGrade: string) {
@@ -156,8 +119,7 @@
 		const badges: Record<string, { class: string; text: string }> = {
 			pending: { class: 'badge-warning', text: 'Pending' },
 			active: { class: 'badge-success', text: 'Active' },
-			inactive: { class: 'badge-secondary', text: 'Inactive' },
-			removed: { class: 'badge-error', text: 'Removed' }
+			inactive: { class: 'badge-secondary', text: 'Inactive' }
 		};
 		return badges[status] || { class: 'badge-secondary', text: status };
 	}
@@ -182,7 +144,6 @@
 	$: {
 		searchTerm;
 		statusFilter;
-		showAssignors;
 		filterReferees();
 	}
 </script>
@@ -226,13 +187,6 @@
 			</select>
 		</div>
 
-		<div class="filter-group checkbox-filter">
-			<label class="checkbox-label">
-				<input type="checkbox" bind:checked={showAssignors} />
-				<span>Show assignors</span>
-			</label>
-		</div>
-
 		<div class="stats">
 			<strong>{filteredReferees.length}</strong> referee{filteredReferees.length !== 1
 				? 's'
@@ -259,7 +213,6 @@
 						<th>DOB</th>
 						<th>Certification</th>
 						<th>Status</th>
-						<th>Role</th>
 						<th>Grade</th>
 						<th>Actions</th>
 					</tr>
@@ -290,36 +243,17 @@
 								{/if}
 							</td>
 							<td>
-								{#if referee.role === 'assignor'}
-									<span class="badge badge-assignor">Assignor</span>
-								{:else}
-									<span class="badge {getStatusBadge(referee.status).class}">
-										{getStatusBadge(referee.status).text}
-									</span>
-								{/if}
+								<span class="badge {getStatusBadge(referee.status).class}">
+									{getStatusBadge(referee.status).text}
+								</span>
 							</td>
 							<td>
 								{#if referee.id === currentUserId}
 									<span class="text-muted">You</span>
 								{:else}
 									<select
-										value={referee.role}
-										on:change={(e) => handleRoleChange(referee.id, e.currentTarget.value)}
-										disabled={referee.status === 'removed'}
-									>
-										<option value="referee">Referee</option>
-										<option value="assignor">Assignor</option>
-									</select>
-								{/if}
-							</td>
-							<td>
-								{#if referee.role === 'assignor' && referee.id !== currentUserId}
-									<span class="text-muted">N/A</span>
-								{:else}
-									<select
 										value={referee.grade || ''}
 										on:change={(e) => handleGradeChange(referee.id, e.currentTarget.value)}
-										disabled={referee.status === 'removed'}
 									>
 										<option value="">No Grade</option>
 										<option value="Junior">Junior</option>
@@ -329,13 +263,11 @@
 								{/if}
 							</td>
 							<td>
-								{#if referee.role === 'assignor' && referee.id !== currentUserId}
-									<span class="text-muted">—</span>
-								{:else if referee.id === currentUserId}
+								{#if referee.id === currentUserId}
 									<span class="text-muted">You</span>
 								{:else}
 									<div class="action-buttons">
-										{#if referee.status === 'pending'}
+										{#if referee.status === 'pending' || referee.status === 'inactive'}
 											<button
 												class="btn-small btn-success"
 												on:click={() => handleStatusChange(referee.id, 'active')}
@@ -348,21 +280,6 @@
 												on:click={() => handleStatusChange(referee.id, 'inactive')}
 											>
 												Deactivate
-											</button>
-										{:else if referee.status === 'inactive'}
-											<button
-												class="btn-small btn-success"
-												on:click={() => handleStatusChange(referee.id, 'active')}
-											>
-												Activate
-											</button>
-										{/if}
-										{#if referee.status !== 'removed'}
-											<button
-												class="btn-small btn-error"
-												on:click={() => handleStatusChange(referee.id, 'removed')}
-											>
-												Remove
 											</button>
 										{/if}
 									</div>
@@ -523,38 +440,9 @@
 		color: var(--text-secondary);
 	}
 
-	.badge-assignor {
-		background-color: #dbeafe;
-		color: #1e40af;
-		font-weight: 600;
-	}
-
 	.text-muted {
 		color: var(--text-secondary);
 		font-style: italic;
-	}
-
-	.checkbox-filter {
-		display: flex;
-		align-items: center;
-		padding-top: 1.75rem;
-	}
-
-	.checkbox-label {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		cursor: pointer;
-		margin: 0;
-	}
-
-	.checkbox-label input[type='checkbox'] {
-		cursor: pointer;
-	}
-
-	.checkbox-label span {
-		font-weight: 500;
-		color: var(--text-primary);
 	}
 
 	.action-buttons {

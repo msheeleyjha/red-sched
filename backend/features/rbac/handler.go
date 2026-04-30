@@ -270,6 +270,64 @@ func (h *Handler) GetAllRoles(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(roles)
 }
 
+// DeleteUser permanently deletes a user and all related data
+func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	targetUserID, err := strconv.ParseInt(vars["id"], 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid user ID", http.StatusBadRequest)
+		return
+	}
+
+	currentUserID, err := h.authMW.GetCurrentUserID(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if currentUserID == targetUserID {
+		http.Error(w, "Cannot delete your own account", http.StatusForbidden)
+		return
+	}
+
+	var exists bool
+	err = h.db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", targetUserID).Scan(&exists)
+	if err != nil || !exists {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	// Check if target is a Super Admin
+	var isSuperAdmin bool
+	err = h.db.QueryRow(`
+		SELECT EXISTS(
+			SELECT 1 FROM user_roles ur
+			JOIN roles r ON ur.role_id = r.id
+			WHERE ur.user_id = $1 AND r.name = 'Super Admin'
+		)
+	`, targetUserID).Scan(&isSuperAdmin)
+	if err == nil && isSuperAdmin {
+		http.Error(w, "Cannot delete a Super Admin user", http.StatusForbidden)
+		return
+	}
+
+	h.auditLogger.LogWithContext(r, audit.ActionDelete, "user", targetUserID, map[string]interface{}{
+		"user_id": targetUserID,
+	}, nil)
+
+	_, err = h.db.Exec("DELETE FROM users WHERE id = $1", targetUserID)
+	if err != nil {
+		log.Printf("Error deleting user %d: %v", targetUserID, err)
+		http.Error(w, "Failed to delete user", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "User deleted successfully",
+	})
+}
+
 // GetAllPermissions returns all available permissions
 func (h *Handler) GetAllPermissions(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.db.Query(`
