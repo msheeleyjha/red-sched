@@ -16,7 +16,7 @@ services:
       retries: 5
     restart: always
     networks:
-      - traefik_default
+      - backend
     # Do not expose port to host in production
 
   backend:
@@ -38,7 +38,8 @@ services:
         condition: service_healthy
     restart: always
     networks:
-      - traefik_default
+      - backend
+      - frontend
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.ref-sched-backend.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)"
@@ -54,7 +55,7 @@ services:
     container_name: referee-scheduler-frontend-prod
     restart: always
     networks:
-      - traefik_default
+      - frontend
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.ref-sched-frontend.rule=Host(`${DOMAIN}`)"
@@ -65,5 +66,7 @@ volumes:
   postgres_data:
 
 networks:
-  traefik_default:
+  backend:
+    external: true
+  frontend:
     external: true
