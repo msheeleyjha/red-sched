@@ -34,6 +34,8 @@
 		acknowledged_at: string | null;
 		has_conflict?: boolean;
 		conflicting_matches?: ConflictingMatch[];
+		viewed_by_referee?: boolean;  // Story 5.6: Whether referee has viewed this match
+		updated_at?: string;           // Story 5.6: When assignment was last updated
 	}
 
 	interface GroupedMatches {
@@ -44,10 +46,18 @@
 	let loading = true;
 	let error = '';
 	let hasProfile = true;
-	let dateFilter = '';
-	let acknowledging = false;
 	let unavailableDays: Set<string> = new Set();
 	let togglingDayAvailability = false;
+
+	// Pagination
+	let currentPage = 1;
+	let perPage = 25;
+	let totalMatches = 0;
+	let totalPages = 0;
+
+	// Filters
+	let dateFrom = '';
+	let dateTo = '';
 
 	onMount(() => {
 		loadMatches();
@@ -59,16 +69,24 @@
 		error = '';
 
 		try {
-			const res = await fetch(`${API_URL}/api/referee/matches`, {
+			const params = new URLSearchParams();
+			params.set('page', currentPage.toString());
+			params.set('per_page', perPage.toString());
+			if (dateFrom) params.set('date_from', dateFrom);
+			if (dateTo) params.set('date_to', dateTo);
+
+			const res = await fetch(`${API_URL}/api/referee/matches?${params.toString()}`, {
 				credentials: 'include'
 			});
 
 			if (res.ok) {
 				const data = await res.json();
-				// Ensure matches is always an array, even if API returns null
-				matches = data || [];
-				// If matches is empty, check if profile exists
-				if (matches.length === 0) {
+				matches = data.matches || [];
+				totalMatches = data.total;
+				totalPages = data.total_pages;
+				currentPage = data.page;
+				// If matches is empty on first load with no filters, check if profile exists
+				if (matches.length === 0 && totalMatches === 0 && !dateFrom && !dateTo) {
 					const profileRes = await fetch(`${API_URL}/api/profile`, { credentials: 'include' });
 					if (profileRes.ok) {
 						const profile = await profileRes.json();
@@ -84,6 +102,73 @@
 		} finally {
 			loading = false;
 		}
+	}
+
+	function applyFilters() {
+		currentPage = 1;
+		loadMatches();
+	}
+
+	function clearFilters() {
+		dateFrom = '';
+		dateTo = '';
+		currentPage = 1;
+		loadMatches();
+	}
+
+	function goToPage(page: number) {
+		if (page < 1 || page > totalPages) return;
+		currentPage = page;
+		loadMatches();
+	}
+
+	function getNextSaturday(fromDate: Date): Date {
+		const d = new Date(fromDate);
+		const day = d.getDay();
+		const daysUntilSat = (6 - day + 7) % 7 || 7;
+		d.setDate(d.getDate() + daysUntilSat);
+		return d;
+	}
+
+	function formatDateParam(d: Date): string {
+		const y = d.getFullYear();
+		const m = String(d.getMonth() + 1).padStart(2, '0');
+		const day = String(d.getDate()).padStart(2, '0');
+		return `${y}-${m}-${day}`;
+	}
+
+	function setWeekend(which: 'this' | 'next') {
+		const today = new Date();
+		const day = today.getDay();
+		let saturday: Date;
+
+		if (which === 'this') {
+			if (day === 6) {
+				saturday = new Date(today);
+			} else if (day === 0) {
+				saturday = new Date(today);
+				saturday.setDate(today.getDate() - 1);
+			} else {
+				saturday = getNextSaturday(today);
+			}
+		} else {
+			if (day === 6) {
+				saturday = new Date(today);
+				saturday.setDate(today.getDate() + 7);
+			} else if (day === 0) {
+				saturday = new Date(today);
+				saturday.setDate(today.getDate() + 6);
+			} else {
+				saturday = getNextSaturday(today);
+				saturday.setDate(saturday.getDate() + 7);
+			}
+		}
+
+		const sunday = new Date(saturday);
+		sunday.setDate(saturday.getDate() + 1);
+
+		dateFrom = formatDateParam(saturday);
+		dateTo = formatDateParam(sunday);
 	}
 
 	async function loadUnavailableDays() {
@@ -178,33 +263,6 @@
 		}
 	}
 
-	async function acknowledgeAssignment(match: Match) {
-		acknowledging = true;
-
-		try {
-			const res = await fetch(`${API_URL}/api/referee/matches/${match.id}/acknowledge`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				credentials: 'include'
-			});
-
-			if (res.ok) {
-				// Update local state
-				const data = await res.json();
-				match.acknowledged = true;
-				match.acknowledged_at = data.acknowledged_at;
-				matches = matches; // Trigger reactivity
-			} else {
-				alert('Failed to acknowledge assignment');
-			}
-		} catch (e) {
-			console.error(e);
-			alert('Network error');
-		} finally {
-			acknowledging = false;
-		}
-	}
-
 	function formatDate(dateString: string): string {
 		const [year, month, day] = dateString.split('-').map(Number);
 		const date = new Date(year, month - 1, day);
@@ -254,13 +312,8 @@
 		return match ? `Field ${match[1]}` : null;
 	}
 
-	// Filter matches by date if filter is set
-	$: filteredMatches = dateFilter
-		? matches.filter(m => m.match_date.split('T')[0] === dateFilter)
-		: matches;
-
 	// Group matches by date, separate assigned from available
-	$: groupedMatches = filteredMatches.reduce((acc: GroupedMatches, match: Match) => {
+	$: groupedMatches = matches.reduce((acc: GroupedMatches, match: Match) => {
 		if (!match.is_assigned) {
 			const date = match.match_date;
 			if (!acc[date]) {
@@ -270,8 +323,6 @@
 		}
 		return acc;
 	}, {});
-
-	$: assignedMatches = filteredMatches.filter(m => m.is_assigned);
 
 	// Get all unique dates from grouped matches AND unavailable days
 	// This ensures date headers show even when day is marked unavailable
@@ -297,18 +348,53 @@
 
 	{#if !loading && !error && hasProfile}
 		<div class="filters">
-			<div class="filter-group">
-				<label for="dateFilter">Filter by Date</label>
-				<input
-					type="date"
-					id="dateFilter"
-					bind:value={dateFilter}
-					placeholder="All dates"
-				/>
+			<div class="filters-row">
+				<div class="filter-group">
+					<label for="dateFrom">From Date</label>
+					<input
+						type="date"
+						id="dateFrom"
+						bind:value={dateFrom}
+					/>
+				</div>
+				<div class="filter-group">
+					<label for="dateTo">To Date</label>
+					<input
+						type="date"
+						id="dateTo"
+						bind:value={dateTo}
+					/>
+				</div>
 			</div>
-			{#if dateFilter}
-				<button class="btn-clear" on:click={() => (dateFilter = '')}>Clear Filter</button>
-			{/if}
+			<div class="weekend-shortcuts">
+				<span class="shortcut-label">Quick select:</span>
+				<button class="btn-shortcut" on:click={() => { setWeekend('this'); applyFilters(); }}>This Weekend</button>
+				<button class="btn-shortcut" on:click={() => { setWeekend('next'); applyFilters(); }}>Next Weekend</button>
+			</div>
+			<div class="filters-footer">
+				<div class="stats">
+					<strong>{totalMatches}</strong> match{totalMatches !== 1 ? 'es' : ''} found
+					{#if totalPages > 1}
+						<span class="page-info">(page {currentPage} of {totalPages})</span>
+					{/if}
+				</div>
+				<div class="filter-actions">
+					<div class="per-page-selector">
+						<label for="perPage">Per page:</label>
+						<select id="perPage" bind:value={perPage} on:change={() => { currentPage = 1; loadMatches(); }}>
+							<option value={25}>25</option>
+							<option value={50}>50</option>
+							<option value={100}>100</option>
+						</select>
+					</div>
+					<button class="btn-small btn-primary" on:click={applyFilters}>
+						Apply Filters
+					</button>
+					<button class="btn-small btn-secondary" on:click={clearFilters}>
+						Clear Filters
+					</button>
+				</div>
+			</div>
 		</div>
 	{/if}
 
@@ -325,118 +411,6 @@
 			<a href="/referee/profile" class="btn-primary">Go to Profile</a>
 		</div>
 	{:else}
-		<!-- Assigned Matches Section -->
-		{#if assignedMatches.length > 0}
-			<section class="assigned-section">
-				<h2>My Assignments ({assignedMatches.length})</h2>
-				<p class="section-description">Matches you've been assigned to</p>
-
-				<div class="matches-grid">
-					{#each assignedMatches as match}
-						<div class="match-card assigned" class:day-unavailable-override={unavailableDays.has(match.match_date)}>
-							<!-- Warning if assigned on unavailable day -->
-							{#if unavailableDays.has(match.match_date)}
-								<div class="unavailable-day-warning">
-									<span class="warning-icon">⚠️</span>
-									<div class="warning-text">
-										<strong>Assigned on Unavailable Day</strong>
-										<p>You marked this day as unavailable, but you've been assigned to this match. Please contact the assignor if this is an error.</p>
-									</div>
-								</div>
-							{/if}
-
-							<!-- Warning if scheduling conflict -->
-							{#if match.has_conflict && match.conflicting_matches && match.conflicting_matches.length > 0}
-								<div class="scheduling-conflict-warning">
-									<span class="warning-icon">⚠️</span>
-									<div class="warning-text">
-										<strong>Scheduling Conflict Detected</strong>
-										<p>This assignment overlaps with {match.conflicting_matches.length} other assignment{match.conflicting_matches.length > 1 ? 's' : ''}:</p>
-										<ul class="conflict-list">
-											{#each match.conflicting_matches as conflict}
-												<li>
-													<strong>{formatTime(conflict.start_time)}</strong> - {conflict.event_name} ({conflict.team_name})
-													{#if conflict.role_type === 'center'}
-														as Center Referee
-													{:else if conflict.role_type === 'assistant_1'}
-														as AR1
-													{:else if conflict.role_type === 'assistant_2'}
-														as AR2
-													{/if}
-												</li>
-											{/each}
-										</ul>
-										<p class="conflict-advice">Please contact the assignor immediately to resolve this conflict before acknowledging.</p>
-									</div>
-								</div>
-							{/if}
-
-							<div class="match-header">
-								<div class="match-title">
-									<h3>{match.event_name}</h3>
-									<span class="age-badge">{match.age_group}</span>
-									<span class="role-badge assigned-badge">
-										{#if match.assigned_role === 'center'}
-											Center Referee
-										{:else if match.assigned_role === 'assistant_1'}
-											Assistant Referee 1
-										{:else if match.assigned_role === 'assistant_2'}
-											Assistant Referee 2
-										{/if}
-									</span>
-								</div>
-							</div>
-
-							<div class="match-details">
-								<div class="detail-row">
-									<span class="icon">📅</span>
-									<span>{formatShortDate(match.match_date)}</span>
-								</div>
-								<div class="detail-row">
-									<span class="icon">🕐</span>
-									<span>{formatTime(match.start_time)}</span>
-									{#if extractMeetingTime(match.description)}
-										<span class="meeting-time">
-											(Meet: {extractMeetingTime(match.description)})
-										</span>
-									{/if}
-								</div>
-								<div class="detail-row">
-									<span class="icon">📍</span>
-									<span>{match.location}</span>
-									{#if extractField(match.description)}
-										<span class="field">• {extractField(match.description)}</span>
-									{/if}
-								</div>
-								<div class="detail-row">
-									<span class="icon">⚽</span>
-									<span class="team-name">{match.team_name}</span>
-								</div>
-							</div>
-
-							<!-- Acknowledgment section -->
-							<div class="acknowledgment-section">
-								{#if match.acknowledged}
-									<div class="acknowledged-indicator">
-										<span class="check-icon">✓</span>
-										<span>Confirmed</span>
-									</div>
-								{:else}
-									<button
-										class="btn-acknowledge"
-										on:click={() => acknowledgeAssignment(match)}
-										disabled={acknowledging}
-									>
-										{acknowledging ? 'Acknowledging...' : 'Acknowledge Assignment'}
-									</button>
-								{/if}
-							</div>
-						</div>
-					{/each}
-				</div>
-			</section>
-		{/if}
-
 		<!-- Available Matches Section -->
 		<section class="available-section">
 			<h2>Available Matches</h2>
@@ -447,9 +421,7 @@
 			{#if sortedDates.length === 0}
 				<div class="info-box">
 					<p>No upcoming matches available at this time.</p>
-					{#if assignedMatches.length === 0}
-						<p>Check back later for new match assignments.</p>
-					{/if}
+					<p>Check back later for new matches.</p>
 				</div>
 			{:else}
 				{#each sortedDates as date}
@@ -564,6 +536,42 @@
 				{/each}
 			{/if}
 		</section>
+
+		{#if totalPages > 1}
+			<div class="pagination">
+				<button
+					class="btn-small btn-secondary"
+					on:click={() => goToPage(currentPage - 1)}
+					disabled={currentPage <= 1}
+				>
+					Previous
+				</button>
+
+				<div class="page-numbers">
+					{#each Array.from({ length: totalPages }, (_, i) => i + 1) as page}
+						{#if page === 1 || page === totalPages || (page >= currentPage - 2 && page <= currentPage + 2)}
+							<button
+								class="page-btn"
+								class:active={page === currentPage}
+								on:click={() => goToPage(page)}
+							>
+								{page}
+							</button>
+						{:else if page === currentPage - 3 || page === currentPage + 3}
+							<span class="page-ellipsis">...</span>
+						{/if}
+					{/each}
+				</div>
+
+				<button
+					class="btn-small btn-secondary"
+					on:click={() => goToPage(currentPage + 1)}
+					disabled={currentPage >= totalPages}
+				>
+					Next
+				</button>
+			</div>
+		{/if}
 	{/if}
 </div>
 
@@ -595,11 +603,83 @@
 	}
 
 	.filters {
-		display: flex;
-		gap: 1rem;
-		align-items: flex-end;
+		background: white;
+		border: 1px solid var(--border-color);
+		border-radius: 8px;
+		padding: 1.25rem;
 		margin-bottom: 2rem;
+	}
+
+	.filters-row {
+		display: flex;
+		gap: 1.5rem;
+		align-items: flex-end;
 		flex-wrap: wrap;
+	}
+
+	.weekend-shortcuts {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+	}
+
+	.shortcut-label {
+		font-size: 0.875rem;
+		color: var(--text-secondary);
+		font-weight: 500;
+	}
+
+	.btn-shortcut {
+		padding: 0.375rem 0.75rem;
+		font-size: 0.8rem;
+		border: 1px solid var(--primary-color);
+		border-radius: 0.375rem;
+		background: white;
+		color: var(--primary-color);
+		cursor: pointer;
+		font-weight: 500;
+		transition: all 0.2s;
+	}
+
+	.btn-shortcut:hover {
+		background: var(--primary-color);
+		color: white;
+	}
+
+	.filters-footer {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-top: 1rem;
+		padding-top: 0.75rem;
+		border-top: 1px solid var(--border-color);
+	}
+
+	.filter-actions {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+	}
+
+	.per-page-selector {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		font-size: 0.875rem;
+		color: var(--text-secondary);
+	}
+
+	.per-page-selector label {
+		font-weight: 500;
+		white-space: nowrap;
+	}
+
+	.per-page-selector select {
+		padding: 0.25rem 0.375rem;
+		border: 1px solid var(--border-color);
+		border-radius: 0.25rem;
+		font-size: 0.875rem;
 	}
 
 	.filter-group {
@@ -611,31 +691,40 @@
 		display: block;
 		margin-bottom: 0.5rem;
 		font-weight: 500;
-		color: #374151;
+		color: var(--text-primary);
 	}
 
 	.filter-group input[type='date'] {
 		width: 100%;
 		padding: 0.75rem;
-		border: 1px solid #d1d5db;
+		border: 1px solid var(--border-color);
 		border-radius: 0.375rem;
 		font-size: 1rem;
 		font-family: inherit;
 	}
 
-	.btn-clear {
-		padding: 0.75rem 1.5rem;
-		background-color: #6b7280;
-		color: white;
+	.stats {
+		color: var(--text-secondary);
+		padding: 0.75rem 0;
+	}
+
+	.page-info {
+		color: var(--text-secondary);
+	}
+
+	.btn-small {
+		padding: 0.375rem 0.75rem;
+		font-size: 0.875rem;
 		border: none;
-		border-radius: 0.375rem;
+		border-radius: 0.25rem;
 		cursor: pointer;
 		font-weight: 500;
 		transition: all 0.2s;
 	}
 
-	.btn-clear:hover {
-		background-color: #4b5563;
+	.btn-small:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	h1 {
@@ -653,7 +742,6 @@
 		margin-bottom: 1.5rem;
 	}
 
-	.assigned-section,
 	.available-section {
 		margin-bottom: 3rem;
 	}
@@ -668,7 +756,7 @@
 		align-items: center;
 		margin-bottom: 1rem;
 		padding-bottom: 0.5rem;
-		border-bottom: 2px solid #e2e8f0;
+		border-bottom: 2px solid var(--border-color);
 		gap: 1rem;
 		flex-wrap: wrap;
 	}
@@ -682,9 +770,9 @@
 
 	.btn-day-toggle {
 		padding: 0.5rem 1rem;
-		background-color: #f3f4f6;
-		color: #374151;
-		border: 1px solid #d1d5db;
+		background-color: var(--bg-secondary);
+		color: var(--text-primary);
+		border: 1px solid var(--border-color);
 		border-radius: 0.375rem;
 		font-size: 0.875rem;
 		font-weight: 500;
@@ -694,7 +782,7 @@
 	}
 
 	.btn-day-toggle:hover:not(:disabled) {
-		background-color: #e5e7eb;
+		background-color: var(--border-color);
 		border-color: #9ca3af;
 	}
 
@@ -704,9 +792,9 @@
 	}
 
 	.btn-day-unavailable {
-		background-color: #fef2f2;
+		background-color: var(--error-light);
 		color: #991b1b;
-		border-color: #ef4444;
+		border-color: var(--error-color);
 		font-weight: 600;
 	}
 
@@ -723,7 +811,7 @@
 
 	.match-card {
 		background: white;
-		border: 2px solid #e2e8f0;
+		border: 2px solid var(--border-color);
 		border-radius: 8px;
 		padding: 1rem;
 		transition: all 0.2s;
@@ -735,13 +823,8 @@
 	}
 
 	.match-card.unavailable {
-		border-color: #ef4444;
-		background-color: #fef2f2;
-	}
-
-	.match-card.assigned {
-		border-color: #3b82f6;
-		background-color: #eff6ff;
+		border-color: var(--error-color);
+		background-color: var(--error-light);
 	}
 
 	.match-header {
@@ -766,114 +849,13 @@
 
 	.age-badge {
 		display: inline-block;
-		background: #3b82f6;
+		background: var(--primary-color);
 		color: white;
 		padding: 0.25rem 0.5rem;
 		border-radius: 4px;
 		font-size: 0.85rem;
 		font-weight: 600;
 		margin-right: 0.5rem;
-	}
-
-	.role-badge {
-		display: inline-block;
-		padding: 0.25rem 0.5rem;
-		border-radius: 4px;
-		font-size: 0.85rem;
-		font-weight: 600;
-	}
-
-	.assigned-badge {
-		background: #3b82f6;
-		color: white;
-	}
-
-	.match-card.day-unavailable-override {
-		border: 3px solid #f59e0b;
-	}
-
-	.unavailable-day-warning {
-		background: #fef3c7;
-		border-left: 4px solid #f59e0b;
-		padding: 1rem;
-		margin-bottom: 1rem;
-		display: flex;
-		gap: 0.75rem;
-		align-items: flex-start;
-		border-radius: 0.375rem;
-	}
-
-	.warning-icon {
-		font-size: 1.5rem;
-		flex-shrink: 0;
-	}
-
-	.warning-text {
-		flex: 1;
-	}
-
-	.warning-text strong {
-		display: block;
-		color: #92400e;
-		font-size: 0.95rem;
-		margin-bottom: 0.25rem;
-	}
-
-	.warning-text p {
-		color: #78350f;
-		font-size: 0.875rem;
-		margin: 0;
-		line-height: 1.4;
-	}
-
-	.scheduling-conflict-warning {
-		background: #fee2e2;
-		border-left: 4px solid #dc2626;
-		padding: 1rem;
-		margin-bottom: 1rem;
-		display: flex;
-		gap: 0.75rem;
-		align-items: flex-start;
-		border-radius: 0.375rem;
-	}
-
-	.scheduling-conflict-warning .warning-text strong {
-		color: #991b1b;
-	}
-
-	.scheduling-conflict-warning .warning-text p {
-		color: #7f1d1d;
-	}
-
-	.conflict-list {
-		margin: 0.75rem 0;
-		padding-left: 1.25rem;
-		color: #7f1d1d;
-		font-size: 0.875rem;
-		line-height: 1.6;
-	}
-
-	.conflict-list li {
-		margin-bottom: 0.5rem;
-	}
-
-	.conflict-list strong {
-		color: #991b1b;
-		display: inline;
-	}
-
-	.conflict-advice {
-		margin-top: 0.75rem !important;
-		font-weight: 500;
-		color: #991b1b !important;
-	}
-
-	.match-card.day-unavailable-override {
-		border-color: #f59e0b;
-	}
-
-	.match-card:has(.scheduling-conflict-warning) {
-		border: 3px solid #dc2626;
 	}
 
 	.availability-buttons {
@@ -910,29 +892,29 @@
 	}
 
 	.btn-unavailable.active {
-		background: #ef4444;
+		background: var(--error-color);
 		color: white;
-		border-color: #ef4444;
+		border-color: var(--error-color);
 	}
 
 	.btn-unavailable:hover:not(.active) {
-		border-color: #ef4444;
-		color: #ef4444;
+		border-color: var(--error-color);
+		color: var(--error-color);
 	}
 
 	.btn-clear {
-		color: #6b7280; /* Ensure icon is visible when not active */
+		color: var(--text-secondary); /* Ensure icon is visible when not active */
 	}
 
 	.btn-clear.active {
-		background: #6b7280;
+		background: var(--text-secondary);
 		color: white;
-		border-color: #6b7280;
+		border-color: var(--text-secondary);
 	}
 
 	.btn-clear:hover:not(.active) {
-		border-color: #6b7280;
-		color: #6b7280;
+		border-color: var(--text-secondary);
+		color: var(--text-secondary);
 	}
 
 	.match-details {
@@ -966,24 +948,24 @@
 	}
 
 	.team-name {
-		color: #374151;
+		color: var(--text-primary);
 		font-weight: 500;
 	}
 
 	.eligible-roles {
 		margin-top: 0.25rem;
 		padding-top: 0.5rem;
-		border-top: 1px solid #e2e8f0;
+		border-top: 1px solid var(--border-color);
 	}
 
 	.small-text {
 		font-size: 0.85rem;
-		color: #6b7280;
+		color: var(--text-secondary);
 	}
 
 	.day-unavailable-message {
-		background: #fef2f2;
-		border: 2px solid #ef4444;
+		background: var(--error-light);
+		border: 2px solid var(--error-color);
 		border-radius: 8px;
 		padding: 1.5rem;
 		text-align: center;
@@ -1002,8 +984,8 @@
 	}
 
 	.info-box {
-		background: #f3f4f6;
-		border: 1px solid #d1d5db;
+		background: var(--bg-secondary);
+		border: 1px solid var(--border-color);
 		border-radius: 8px;
 		padding: 1.5rem;
 		text-align: center;
@@ -1014,14 +996,13 @@
 	}
 
 	.error {
-		background: #fef2f2;
+		background: var(--error-light);
 		border: 1px solid #fecaca;
 		border-radius: 8px;
 		padding: 1rem;
 		color: #991b1b;
 	}
 
-	.btn-primary,
 	.btn-secondary {
 		display: inline-block;
 		padding: 0.5rem 1rem;
@@ -1030,70 +1011,58 @@
 		font-weight: 500;
 		cursor: pointer;
 		transition: all 0.2s;
-	}
-
-	.btn-primary {
-		background: #3b82f6;
-		color: white;
-		border: none;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
-	}
-
-	.btn-secondary {
 		background: white;
-		color: #3b82f6;
-		border: 2px solid #3b82f6;
+		color: var(--primary-color);
+		border: 2px solid var(--primary-color);
 	}
 
 	.btn-secondary:hover {
-		background: #eff6ff;
+		background: var(--primary-light);
 	}
 
-	.acknowledgment-section {
-		margin-top: 1rem;
-		padding-top: 1rem;
-		border-top: 1px solid #e2e8f0;
+	.pagination {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 1.5rem;
+		padding: 1rem 0;
 	}
 
-	.btn-acknowledge {
-		width: 100%;
-		padding: 0.75rem 1rem;
-		background: #3b82f6;
-		color: white;
-		border: none;
-		border-radius: 6px;
-		font-weight: 600;
+	.page-numbers {
+		display: flex;
+		gap: 0.25rem;
+		align-items: center;
+	}
+
+	.page-btn {
+		min-width: 2.25rem;
+		height: 2.25rem;
+		padding: 0 0.5rem;
+		border: 1px solid var(--border-color);
+		border-radius: 0.375rem;
+		background: white;
 		cursor: pointer;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--text-primary);
 		transition: all 0.2s;
 	}
 
-	.btn-acknowledge:hover:not(:disabled) {
-		background: #2563eb;
+	.page-btn:hover {
+		background-color: var(--bg-secondary);
+		border-color: var(--primary-color);
 	}
 
-	.btn-acknowledge:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
+	.page-btn.active {
+		background-color: var(--primary-color);
+		color: white;
+		border-color: var(--primary-color);
 	}
 
-	.acknowledged-indicator {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.5rem;
-		padding: 0.75rem;
-		background: #d1fae5;
-		color: #065f46;
-		border-radius: 6px;
-		font-weight: 600;
-	}
-
-	.check-icon {
-		font-size: 1.25rem;
-		font-weight: bold;
+	.page-ellipsis {
+		padding: 0 0.25rem;
+		color: var(--text-secondary);
 	}
 
 	@media (max-width: 768px) {

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 
 	const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
 
@@ -32,12 +32,14 @@
 
 	let user: User | null = null;
 	let matches: Match[] = [];
+	let assignedMatches: Match[] = [];
+	let totalAssignments = 0;
 	let loading = true;
 	let error = '';
 
 	onMount(async () => {
 		await loadUser();
-		await loadMatches();
+		await Promise.all([loadMatches(), loadAssignments()]);
 	});
 
 	async function loadUser() {
@@ -68,8 +70,7 @@
 
 			if (response.ok) {
 				const data = await response.json();
-				// Ensure matches is always an array, even if API returns null
-				matches = data || [];
+				matches = data.matches || [];
 			} else {
 				error = 'Failed to load matches';
 			}
@@ -81,12 +82,29 @@
 		}
 	}
 
+	async function loadAssignments() {
+		try {
+			const response = await fetch(`${API_URL}/api/referee/assignments?per_page=3`, {
+				credentials: 'include'
+			});
+
+			if (response.ok) {
+				const data = await response.json();
+				assignedMatches = data.matches || [];
+				totalAssignments = data.total || 0;
+			}
+		} catch (err) {
+			console.error('Failed to load assignments:', err);
+		}
+	}
+
 	async function handleLogout() {
 		try {
 			await fetch(`${API_URL}/api/auth/logout`, {
 				method: 'POST',
 				credentials: 'include'
 			});
+			await invalidateAll();
 			goto('/');
 		} catch (error) {
 			console.error('Logout error:', error);
@@ -125,8 +143,6 @@
 		? `${user.first_name} ${user.last_name}`
 		: user?.name || 'User';
 
-	$: assignedMatches = matches.filter((m) => m.is_assigned).slice(0, 5);
-	$: availableMatches = matches.filter((m) => !m.is_assigned && m.is_available).slice(0, 5);
 	$: upcomingUnmarked = matches.filter((m) => !m.is_assigned && !m.is_available).slice(0, 3);
 </script>
 
@@ -174,6 +190,11 @@
 						<div class="nav-title">Import Matches</div>
 						<div class="nav-description">Upload match schedule</div>
 					</a>
+					<a href="/referee/assignments" class="nav-card">
+						<div class="nav-icon">📋</div>
+						<div class="nav-title">My Assignments</div>
+						<div class="nav-description">View your match assignments</div>
+					</a>
 					<a href="/referee/matches" class="nav-card">
 						<div class="nav-icon">✅</div>
 						<div class="nav-title">My Availability</div>
@@ -184,7 +205,17 @@
 						<div class="nav-title">My Profile</div>
 						<div class="nav-description">Update your information</div>
 					</a>
+					<a href="/admin/users" class="nav-card nav-card-admin">
+						<div class="nav-icon">🛡️</div>
+						<div class="nav-title">Admin</div>
+						<div class="nav-description">Users, roles, and audit logs</div>
+					</a>
 				{:else}
+					<a href="/referee/assignments" class="nav-card">
+						<div class="nav-icon">📋</div>
+						<div class="nav-title">My Assignments</div>
+						<div class="nav-description">View your match assignments</div>
+					</a>
 					<a href="/referee/matches" class="nav-card">
 						<div class="nav-icon">⚽</div>
 						<div class="nav-title">My Matches</div>
@@ -208,7 +239,7 @@
 				<div class="error-box">
 					<p>{error}</p>
 				</div>
-			{:else if assignedMatches.length === 0 && availableMatches.length === 0 && upcomingUnmarked.length === 0}
+			{:else if assignedMatches.length === 0 && upcomingUnmarked.length === 0}
 				<div class="info-box">
 					<p>No upcoming matches at this time.</p>
 					{#if user.role === 'referee'}
@@ -218,7 +249,9 @@
 			{:else}
 				{#if assignedMatches.length > 0}
 					<div class="match-group">
-						<h4>My Assignments ({assignedMatches.length})</h4>
+						<h4>
+							<a href="/referee/assignments" class="section-link">My Assignments ({totalAssignments})</a>
+						</h4>
 						<div class="match-list">
 							{#each assignedMatches as match}
 								<div class="match-item assigned">
@@ -243,35 +276,8 @@
 								</div>
 							{/each}
 						</div>
-						{#if matches.filter((m) => m.is_assigned).length > 5}
-							<a href="/referee/matches" class="view-all-link">View all assignments →</a>
-						{/if}
-					</div>
-				{/if}
-
-				{#if availableMatches.length > 0}
-					<div class="match-group">
-						<h4>Marked Available ({availableMatches.length})</h4>
-						<div class="match-list">
-							{#each availableMatches as match}
-								<div class="match-item available">
-									<div class="match-header">
-										<span class="match-title">{match.event_name}</span>
-									</div>
-									<div class="match-details">
-										<span class="match-date">📅 {formatDate(match.match_date)}</span>
-										<span class="match-time">🕐 {formatTime(match.start_time)}</span>
-										<span class="match-location">📍 {match.location}</span>
-									</div>
-									<div class="match-info">
-										<span class="age-badge">{match.age_group}</span>
-										<span class="team-name">{match.team_name}</span>
-									</div>
-								</div>
-							{/each}
-						</div>
-						{#if matches.filter((m) => !m.is_assigned && m.is_available).length > 5}
-							<a href="/referee/matches" class="view-all-link">View all available matches →</a>
+						{#if totalAssignments > 3}
+							<a href="/referee/assignments" class="view-all-link">View all {totalAssignments} assignments →</a>
 						{/if}
 					</div>
 				{/if}
@@ -414,6 +420,15 @@
 		transform: translateY(-2px);
 	}
 
+	.nav-card-admin {
+		background-color: var(--primary-light);
+		border-color: #bfdbfe;
+	}
+
+	.nav-card-admin:hover {
+		border-color: var(--primary-color);
+	}
+
 	.nav-icon {
 		font-size: 2.5rem;
 		margin-bottom: 0.75rem;
@@ -463,18 +478,13 @@
 	}
 
 	.match-item.assigned {
-		border-color: #3b82f6;
-		background-color: #eff6ff;
-	}
-
-	.match-item.available {
-		border-color: #10b981;
-		background-color: #f0fdf4;
+		border-color: var(--primary-color);
+		background-color: var(--primary-light);
 	}
 
 	.match-item.unmarked {
-		border-color: #f59e0b;
-		background-color: #fffbeb;
+		border-color: var(--warning-color);
+		background-color: var(--warning-light);
 	}
 
 	.match-header {
@@ -494,7 +504,7 @@
 
 	.match-role {
 		padding: 0.25rem 0.75rem;
-		background-color: #3b82f6;
+		background-color: var(--primary-color);
 		color: white;
 		border-radius: 0.375rem;
 		font-size: 0.875rem;
@@ -535,7 +545,7 @@
 
 	.age-badge {
 		padding: 0.25rem 0.5rem;
-		background-color: #3b82f6;
+		background-color: var(--primary-color);
 		color: white;
 		border-radius: 0.375rem;
 		font-size: 0.875rem;
@@ -545,6 +555,16 @@
 	.team-name {
 		color: var(--text-secondary);
 		font-size: 0.875rem;
+	}
+
+	.section-link {
+		color: var(--primary-color);
+		text-decoration: none;
+		transition: color 0.2s;
+	}
+
+	.section-link:hover {
+		text-decoration: underline;
 	}
 
 	.view-all-link {
@@ -567,7 +587,7 @@
 	}
 
 	.error-box {
-		background-color: #fef2f2;
+		background-color: var(--error-light);
 		border: 1px solid #fecaca;
 		border-radius: 0.5rem;
 		padding: 1rem;
@@ -575,27 +595,12 @@
 	}
 
 	.info-box {
-		background-color: #f3f4f6;
-		border: 1px solid #d1d5db;
+		background-color: var(--bg-secondary);
+		border: 1px solid var(--border-color);
 		border-radius: 0.5rem;
 		padding: 1.5rem;
 		text-align: center;
 		color: var(--text-secondary);
-	}
-
-	.btn-secondary {
-		background-color: white;
-		color: var(--text-primary);
-		border: 1px solid var(--border-color);
-		padding: 0.5rem 1rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-weight: 500;
-		transition: all 0.2s;
-	}
-
-	.btn-secondary:hover {
-		background-color: var(--bg-secondary);
 	}
 
 	@media (max-width: 768px) {

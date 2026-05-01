@@ -1,99 +1,148 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"strings"
 	"time"
 
-	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	_ "github.com/lib/pq"
-	"github.com/rs/cors"
+	"github.com/msheeley/referee-scheduler/features/acknowledgment"
+	"github.com/msheeley/referee-scheduler/features/assignments"
+	auditFeature "github.com/msheeley/referee-scheduler/features/audit"
+	"github.com/msheeley/referee-scheduler/features/availability"
+	"github.com/msheeley/referee-scheduler/features/eligibility"
+	"github.com/msheeley/referee-scheduler/features/match_reports"
+	"github.com/msheeley/referee-scheduler/features/matches"
+	"github.com/msheeley/referee-scheduler/features/rbac"
+	"github.com/msheeley/referee-scheduler/features/referees"
+	"github.com/msheeley/referee-scheduler/features/users"
+	auditShared "github.com/msheeley/referee-scheduler/shared/audit"
+	"github.com/msheeley/referee-scheduler/shared/config"
+	"github.com/msheeley/referee-scheduler/shared/database"
+	"github.com/msheeley/referee-scheduler/shared/middleware"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
 
 var (
-	db           *sql.DB
+	cfg          *config.Config
 	sessionStore *sessions.CookieStore
 	oauth2Config *oauth2.Config
+
+	usersService *users.Service
 )
 
 func main() {
-	// Initialize database
-	var err error
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		log.Fatal("DATABASE_URL environment variable is required")
-	}
+	// Load configuration
+	cfg = config.Load()
 
-	// Append timezone parameter to ensure all time operations use Eastern Time
-	if !strings.Contains(dbURL, "timezone=") {
-		if strings.Contains(dbURL, "?") {
-			dbURL += "&timezone=America/New_York"
-		} else {
-			dbURL += "?timezone=America/New_York"
-		}
-	}
-
-	db, err = sql.Open("postgres", dbURL)
+	// Connect to database
+	dbConn, err := database.Connect(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer db.Close()
+	defer dbConn.Close()
 
-	// Test database connection
-	if err = db.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
-	}
-	log.Println("Database connection established")
+	db := dbConn.DB
 
 	// Run migrations
-	if err := runMigrations(dbURL); err != nil {
+	if err := database.RunMigrations(cfg.DatabaseURL); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
+	// Initialize shared audit logger
+	auditLogger := auditShared.NewLogger(db)
+	defer auditLogger.Close()
+	log.Println("Audit logger initialized")
+
+	// Initialize audit retention service
+	auditRetentionService := auditFeature.NewRetentionService(db, cfg.AuditRetentionDays)
+	auditRetentionService.Start()
+	defer auditRetentionService.Stop()
+	log.Println("Audit retention service started")
+
+	// Initialize match retention service
+	matchRetentionService := matches.NewRetentionService(db, cfg.MatchRetentionDays)
+	matchRetentionService.Start()
+	defer matchRetentionService.Stop()
+	log.Println("Match retention service started")
+
 	// Initialize session store
-	sessionSecret := os.Getenv("SESSION_SECRET")
-	if sessionSecret == "" {
-		log.Fatal("SESSION_SECRET environment variable is required")
-	}
-	sessionStore = sessions.NewCookieStore([]byte(sessionSecret))
+	sessionStore = sessions.NewCookieStore([]byte(cfg.SessionSecret))
 	sessionStore.Options = &sessions.Options{
 		Path:     "/",
 		MaxAge:   86400 * 7, // 7 days
 		HttpOnly: true,
-		Secure:   os.Getenv("ENV") == "production",
+		Secure:   cfg.IsProduction(),
 		SameSite: http.SameSiteLaxMode,
 	}
 
 	// Initialize OAuth2 config
-	clientID := os.Getenv("GOOGLE_CLIENT_ID")
-	clientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
-	redirectURL := os.Getenv("GOOGLE_REDIRECT_URL")
-
-	if clientID == "" || clientSecret == "" || redirectURL == "" {
-		log.Fatal("GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URL are required")
-	}
-
 	oauth2Config = &oauth2.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		RedirectURL:  redirectURL,
+		ClientID:     cfg.GoogleClientID,
+		ClientSecret: cfg.GoogleClientSecret,
+		RedirectURL:  cfg.GoogleRedirectURL,
 		Scopes: []string{
 			"https://www.googleapis.com/auth/userinfo.email",
 			"https://www.googleapis.com/auth/userinfo.profile",
 		},
 		Endpoint: google.Endpoint,
 	}
+
+	// Initialize middleware
+	authMW := middleware.NewAuthMiddleware(sessionStore, db)
+	rbacMW := middleware.NewRBACMiddleware(sessionStore, db)
+
+	// Initialize feature slices
+	usersRepo := users.NewRepository(db)
+	usersService = users.NewService(usersRepo)
+	usersHandler := users.NewHandler(usersService)
+	log.Println("Users feature initialized")
+
+	matchesRepo := matches.NewRepository(db)
+	matchesService := matches.NewService(matchesRepo)
+	matchesHandler := matches.NewHandler(matchesService)
+	log.Println("Matches feature initialized")
+
+	assignmentsRepo := assignments.NewRepository(db)
+	assignmentsService := assignments.NewService(assignmentsRepo)
+	assignmentsHandler := assignments.NewHandler(assignmentsService)
+	log.Println("Assignments feature initialized")
+
+	acknowledgmentRepo := acknowledgment.NewRepository(db)
+	acknowledgmentService := acknowledgment.NewService(acknowledgmentRepo)
+	acknowledgmentHandler := acknowledgment.NewHandler(acknowledgmentService)
+	log.Println("Acknowledgment feature initialized")
+
+	refereesRepo := referees.NewRepository(db)
+	refereesService := referees.NewService(refereesRepo)
+	refereesHandler := referees.NewHandler(refereesService)
+	log.Println("Referees feature initialized")
+
+	availabilityRepo := availability.NewRepository(db)
+	availabilityService := availability.NewService(availabilityRepo)
+	availabilityHandler := availability.NewHandler(availabilityService, db)
+	log.Println("Availability feature initialized")
+
+	eligibilityRepo := eligibility.NewRepository(db)
+	eligibilityService := eligibility.NewService(eligibilityRepo)
+	eligibilityHandler := eligibility.NewHandler(eligibilityService)
+	log.Println("Eligibility feature initialized")
+
+	matchReportsRepo := match_reports.NewRepository(db)
+	matchReportsService := match_reports.NewService(matchReportsRepo, db)
+	matchReportsHandler := match_reports.NewHandler(matchReportsService, db)
+	log.Println("Match reports feature initialized")
+
+	auditHandler := auditFeature.NewHandler(db, auditRetentionService)
+	log.Println("Audit feature initialized")
+
+	rbacHandler := rbac.NewHandler(db, auditLogger, authMW)
+	log.Println("RBAC feature initialized")
 
 	// Setup router
 	r := mux.NewRouter()
@@ -103,82 +152,30 @@ func main() {
 	r.HandleFunc("/api/auth/google", googleAuthHandler).Methods("GET")
 	r.HandleFunc("/api/auth/google/callback", googleCallbackHandler).Methods("GET")
 	r.HandleFunc("/api/auth/logout", logoutHandler).Methods("POST")
-	r.HandleFunc("/api/auth/me", authMiddleware(meHandler)).Methods("GET")
 
-	// Profile routes (authenticated users)
-	r.HandleFunc("/api/profile", authMiddleware(getProfileHandler)).Methods("GET")
-	r.HandleFunc("/api/profile", authMiddleware(updateProfileHandler)).Methods("PUT")
+	// Feature routes
+	usersHandler.RegisterRoutes(r, authMW.RequireAuth)
+	matchesHandler.RegisterRoutes(r, authMW.RequireAuth, rbacMW.RequirePermission)
+	assignmentsHandler.RegisterRoutes(r, authMW.RequireAuth, rbacMW.RequirePermission)
+	acknowledgmentHandler.RegisterRoutes(r, authMW.RequireAuth)
+	refereesHandler.RegisterRoutes(r, authMW.RequireAuth, rbacMW.RequirePermission)
+	availabilityHandler.RegisterRoutes(r, authMW.RequireAuth)
+	eligibilityHandler.RegisterRoutes(r, authMW.RequireAuth, rbacMW.RequirePermission)
+	matchReportsHandler.RegisterRoutes(r, authMW.RequireAuth)
+	auditHandler.RegisterRoutes(r, rbacMW.RequirePermission)
+	rbacHandler.RegisterRoutes(r, rbacMW.RequirePermission)
 
-	// Referee management routes (assignors only)
-	r.HandleFunc("/api/referees", authMiddleware(assignorOnly(listRefereesHandler))).Methods("GET")
-	r.HandleFunc("/api/referees/{id}", authMiddleware(assignorOnly(updateRefereeHandler))).Methods("PUT")
-
-	// Match management routes (assignors only)
-	r.HandleFunc("/api/matches/import/parse", authMiddleware(assignorOnly(parseCSVHandler))).Methods("POST")
-	r.HandleFunc("/api/matches/import/confirm", authMiddleware(assignorOnly(importMatchesHandler))).Methods("POST")
-	r.HandleFunc("/api/matches", authMiddleware(assignorOnly(listMatchesHandler))).Methods("GET")
-	r.HandleFunc("/api/matches/{id}", authMiddleware(assignorOnly(updateMatchHandler))).Methods("PUT")
-	r.HandleFunc("/api/matches/{id}/eligible-referees", authMiddleware(assignorOnly(getEligibleRefereesHandler))).Methods("GET")
-
-	// Referee availability routes
-	r.HandleFunc("/api/referee/matches", authMiddleware(getEligibleMatchesForRefereeHandler)).Methods("GET")
-	r.HandleFunc("/api/referee/matches/{id}/availability", authMiddleware(toggleAvailabilityHandler)).Methods("POST")
-	r.HandleFunc("/api/referee/matches/{match_id}/acknowledge", authMiddleware(acknowledgeAssignmentHandler)).Methods("POST")
-
-	// Day unavailability routes
-	r.HandleFunc("/api/referee/day-unavailability", authMiddleware(getDayUnavailabilityHandler)).Methods("GET")
-	r.HandleFunc("/api/referee/day-unavailability/{date}", authMiddleware(toggleDayUnavailabilityHandler)).Methods("POST")
-
-	// Assignment routes (assignors only)
-	r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/assign", authMiddleware(assignorOnly(assignRefereeHandler))).Methods("POST")
-	r.HandleFunc("/api/matches/{match_id}/roles/{role_type}/add", authMiddleware(assignorOnly(addRoleSlotHandler))).Methods("POST")
-	r.HandleFunc("/api/matches/{match_id}/conflicts", authMiddleware(assignorOnly(getConflictingAssignmentsHandler))).Methods("GET")
+	// Match retention purge route
+	r.HandleFunc("/api/admin/matches/purge", rbacMW.RequirePermission("can_view_audit_logs", purgeArchivedMatchesHandler(matchRetentionService))).Methods("POST")
 
 	// Setup CORS
-	corsHandler := cors.New(cors.Options{
-		AllowedOrigins:   []string{os.Getenv("FRONTEND_URL")},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type", "Authorization"},
-		AllowCredentials: true,
-	})
+	corsHandler := middleware.NewCORSHandler(cfg.FrontendURL)
 
 	// Start server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	log.Printf("Server starting on port %s", port)
-	if err := http.ListenAndServe(":"+port, corsHandler.Handler(r)); err != nil {
+	log.Printf("Server starting on port %s", cfg.Port)
+	if err := http.ListenAndServe(":"+cfg.Port, corsHandler.Handler(r)); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
-}
-
-func runMigrations(dbURL string) error {
-	db, err := sql.Open("postgres", dbURL)
-	if err != nil {
-		return fmt.Errorf("failed to open db for migrations: %w", err)
-	}
-	defer db.Close()
-
-	driver, err := postgres.WithInstance(db, &postgres.Config{})
-	if err != nil {
-		return fmt.Errorf("failed to create migration driver: %w", err)
-	}
-
-	m, err := migrate.NewWithDatabaseInstance(
-		"file://migrations",
-		"postgres", driver)
-	if err != nil {
-		return fmt.Errorf("failed to create migration instance: %w", err)
-	}
-
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("failed to run migrations: %w", err)
-	}
-
-	log.Println("Migrations completed successfully")
-	return nil
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -190,10 +187,8 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func googleAuthHandler(w http.ResponseWriter, r *http.Request) {
-	// Generate random state for CSRF protection
 	state := fmt.Sprintf("%d", time.Now().UnixNano())
 
-	// Store state in session
 	session, _ := sessionStore.Get(r, "auth-session")
 	session.Values["oauth_state"] = state
 	session.Save(r, w)
@@ -203,7 +198,6 @@ func googleAuthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func googleCallbackHandler(w http.ResponseWriter, r *http.Request) {
-	// Verify state
 	session, err := sessionStore.Get(r, "auth-session")
 	if err != nil {
 		http.Error(w, "Session error", http.StatusInternalServerError)
@@ -217,7 +211,6 @@ func googleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Exchange code for token
 	code := r.URL.Query().Get("code")
 	token, err := oauth2Config.Exchange(r.Context(), code)
 	if err != nil {
@@ -225,7 +218,6 @@ func googleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get user info from Google
 	client := oauth2Config.Client(r.Context(), token)
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
 	if err != nil {
@@ -246,15 +238,13 @@ func googleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find or create user
-	user, err := findOrCreateUser(userInfo.ID, userInfo.Email, userInfo.Name)
+	user, err := usersService.FindOrCreate(r.Context(), userInfo.ID, userInfo.Email, userInfo.Name)
 	if err != nil {
 		log.Printf("Failed to find or create user: %v", err)
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
 		return
 	}
 
-	// Store user ID in session
 	session.Values["user_id"] = user.ID
 	session.Values["user_role"] = user.Role
 	delete(session.Values, "oauth_state")
@@ -263,9 +253,7 @@ func googleCallbackHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Redirect to frontend
-	frontendURL := os.Getenv("FRONTEND_URL")
-	http.Redirect(w, r, frontendURL+"/auth/callback", http.StatusTemporaryRedirect)
+	http.Redirect(w, r, cfg.FrontendURL+"/auth/callback", http.StatusTemporaryRedirect)
 }
 
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
@@ -275,7 +263,6 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clear session
 	session.Values = make(map[interface{}]interface{})
 	session.Options.MaxAge = -1
 	session.Save(r, w)
@@ -284,56 +271,24 @@ func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "logged out"})
 }
 
-func meHandler(w http.ResponseWriter, r *http.Request) {
-	user := r.Context().Value(userContextKey).(*User)
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":    user.ID,
-		"email": user.Email,
-		"name":  user.Name,
-		"role":  user.Role,
-	})
-}
-
-// Middleware
-func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+// purgeArchivedMatchesHandler returns a handler that triggers archived match purge
+func purgeArchivedMatchesHandler(retentionService *matches.RetentionService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		session, err := sessionStore.Get(r, "auth-session")
+		if retentionService == nil {
+			http.Error(w, "Match retention service not initialized", http.StatusInternalServerError)
+			return
+		}
+
+		log.Println("Manual archived match purge triggered by admin")
+
+		result, err := retentionService.PurgeOldMatches()
 		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			log.Printf("Error during manual match purge: %v", err)
+			http.Error(w, "Failed to purge archived matches", http.StatusInternalServerError)
 			return
 		}
 
-		userID, ok := session.Values["user_id"].(int64)
-		if !ok {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		// Get user from database
-		user, err := getUserByID(userID)
-		if err != nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		// Add user to context
-		ctx := r.Context()
-		ctx = contextWithUser(ctx, user)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	}
-}
-
-// assignorOnly middleware ensures only assignors can access the route
-func assignorOnly(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		user := r.Context().Value(userContextKey).(*User)
-
-		if user.Role != "assignor" {
-			http.Error(w, "Forbidden: Assignor access required", http.StatusForbidden)
-			return
-		}
-
-		next.ServeHTTP(w, r)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
 	}
 }

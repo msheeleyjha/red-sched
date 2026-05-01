@@ -223,11 +223,11 @@ All updates have been verified against:
 ## Files to Review
 
 For verification, review these key files:
-1. `PROJECT_STATUS.md` - Overall project status (most comprehensive)
-2. `README.md` - Main entry point with API docs
-3. `EPIC6_IMPLEMENTATION_REPORT.md` - New file with Epic 6 details
-4. `STORIES.md` - Story completion checkboxes
-5. `GETTING_STARTED.md` - Updated feature list
+1. [`PROJECT_STATUS.md`](../PROJECT_STATUS.md) - Overall project status (most comprehensive)
+2. [`README.md`](../../README.md) - Main entry point with API docs
+3. [`EPIC6_IMPLEMENTATION_REPORT.md`](../implementation-reports/EPIC6_IMPLEMENTATION_REPORT.md) - New file with Epic 6 details
+4. [`STORIES.md`](../planning/STORIES.md) - Story completion checkboxes
+5. [`GETTING_STARTED.md`](../guides/GETTING_STARTED.md) - Updated feature list
 
 ---
 

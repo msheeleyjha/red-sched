@@ -1,10 +1,12 @@
 # Binaries
 main
+referee-scheduler
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+bin/
 
 # Test binary
 *.test

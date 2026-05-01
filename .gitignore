@@ -11,7 +11,7 @@ postgres_data/
 backups/
 *.sql
 *.sql.gz
-
+!backend/migrations/*.sql
 # Nginx (not used with Traefik, but keeping for reference)
 nginx/conf.d/*.conf
 !nginx/conf.d/*.conf.template
@@ -32,4 +32,4 @@ Thumbs.db
 *.log
 logs/
 
-.claude/
+.claude/backend/referee-scheduler

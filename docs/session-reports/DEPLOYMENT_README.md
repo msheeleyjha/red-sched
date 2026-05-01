@@ -277,8 +277,8 @@ Compare to:
 - **Quick Start:** [QUICK_DEPLOY.md](QUICK_DEPLOY.md)
 - **Full Guide:** [DEPLOYMENT_TRAEFIK.md](DEPLOYMENT_TRAEFIK.md)
 - **Main README:** [README.md](README.md)
-- **Setup Guide:** [SETUP.md](SETUP.md)
-- **Testing:** [TESTING_GUIDE.md](TESTING_GUIDE.md)
+- **Setup Guide:** [SETUP.md](../guides/SETUP.md)
+- **Testing:** [TESTING_GUIDE.md](../guides/TESTING_GUIDE.md)
 
 ## Security Considerations
 

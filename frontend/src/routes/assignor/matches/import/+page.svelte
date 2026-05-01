@@ -14,6 +14,23 @@
 	let duplicates: any[] = [];
 	let validRows: any[] = [];
 	let errorRows: any[] = [];
+	let uniqueLocations: string[] = [];
+
+	// Duplicate resolution: track which row the user picks per duplicate group
+	// Key: group index, Value: set of selected row numbers
+	let duplicateSelections: Record<number, Set<number>> = {};
+
+	// Filter options (Story 6.4)
+	let filterPractices = false;
+	let filterAway = false;
+	let homeLocations: string[] = [];
+	let customExcludeText = '';
+
+	// Section collapse state (all start collapsed)
+	let showDuplicates = false;
+	let showFilters = false;
+	let showErrors = false;
+	let showValidMatches = false;
 
 	// Import results
 	let importResult: any = null;
@@ -57,10 +74,26 @@
 				const data = await response.json();
 				rows = data.rows || [];
 				duplicates = data.duplicates || [];
+				uniqueLocations = data.unique_locations || [];
 
-				// Separate valid and error rows
-				validRows = rows.filter((r) => !r.error);
+				// Collect row numbers involved in duplicate groups
+				const duplicateRowNumbers = new Set<number>();
+				duplicates.forEach((group: any) => {
+					(group.matches || []).forEach((m: any) => duplicateRowNumbers.add(m.row_number));
+				});
+
+				// Separate valid, error, and duplicate rows
+				validRows = rows.filter((r) => !r.error && !duplicateRowNumbers.has(r.row_number));
 				errorRows = rows.filter((r) => r.error);
+
+				// Initialize duplicate selections: first row in each group selected by default
+				duplicateSelections = {};
+				duplicates.forEach((group: any, i: number) => {
+					const matches = group.matches || [];
+					if (matches.length > 0) {
+						duplicateSelections[i] = new Set([matches[0].row_number]);
+					}
+				});
 
 				step = 'preview';
 			} else {
@@ -86,8 +119,14 @@
 					'Content-Type': 'application/json'
 				},
 				body: JSON.stringify({
-					rows: validRows,
-					resolutions: {} // TODO: Story 3.2 will handle duplicate resolution
+					rows: rowsToImport,
+					resolutions: {},
+					filters: {
+						filter_practices: filterPractices,
+						filter_away: filterAway,
+						home_locations: homeLocations,
+						custom_exclude_terms: customExcludeTerms
+					}
 				})
 			});
 
@@ -105,6 +144,34 @@
 		}
 	}
 
+	function toggleDuplicateSelection(groupIndex: number, rowNumber: number) {
+		const current = duplicateSelections[groupIndex] || new Set();
+		if (current.has(rowNumber)) {
+			current.delete(rowNumber);
+		} else {
+			current.add(rowNumber);
+		}
+		duplicateSelections[groupIndex] = new Set(current);
+		duplicateSelections = { ...duplicateSelections };
+	}
+
+	// Rows selected from duplicate groups to include in import
+	$: resolvedDuplicateRows = (() => {
+		const resolved: any[] = [];
+		duplicates.forEach((group: any, i: number) => {
+			const selected = duplicateSelections[i] || new Set();
+			(group.matches || []).forEach((m: any) => {
+				if (selected.has(m.row_number)) {
+					resolved.push(m);
+				}
+			});
+		});
+		return resolved;
+	})();
+
+	// All rows that will be sent to the confirm endpoint
+	$: rowsToImport = [...validRows, ...resolvedDuplicateRows];
+
 	function handleStartOver() {
 		step = 'upload';
 		file = null;
@@ -112,9 +179,88 @@
 		duplicates = [];
 		validRows = [];
 		errorRows = [];
+		uniqueLocations = [];
+		duplicateSelections = {};
+		showDuplicates = false;
+		showFilters = false;
+		showErrors = false;
+		showValidMatches = false;
+		filterPractices = false;
+		filterAway = false;
+		homeLocations = [];
+		customExcludeText = '';
 		importResult = null;
 		error = '';
 	}
+
+	// Helper functions for location selection
+	function toggleLocation(location: string) {
+		if (homeLocations.includes(location)) {
+			homeLocations = homeLocations.filter((l) => l !== location);
+		} else {
+			homeLocations = [...homeLocations, location];
+		}
+	}
+
+	function selectAllLocations() {
+		homeLocations = [...uniqueLocations];
+	}
+
+	function clearAllLocations() {
+		homeLocations = [];
+	}
+
+	// Parse comma-separated custom exclude terms
+	$: customExcludeTerms = customExcludeText
+		.split(',')
+		.map((t) => t.trim())
+		.filter((t) => t.length > 0);
+
+	// Computed values for preview
+	$: filteredCount = (() => {
+		if (!filterPractices && !filterAway && customExcludeTerms.length === 0) return 0;
+
+		let count = 0;
+		rowsToImport.forEach((row) => {
+			const eventLower = (row.event_name || '').toLowerCase();
+			if (filterPractices && (eventLower.includes('practice') || eventLower.includes('training'))) {
+				count++;
+				return;
+			}
+			if (customExcludeTerms.length > 0) {
+				const matched = customExcludeTerms.some((term) => eventLower.includes(term.toLowerCase()));
+				if (matched) {
+					count++;
+					return;
+				}
+			}
+			if (filterAway && homeLocations.length > 0) {
+				const isHome = homeLocations.some((loc) => row.location?.includes(loc));
+				if (!isHome) count++;
+			}
+		});
+		return count;
+	})();
+
+	$: willImportCount = rowsToImport.length - filteredCount;
+
+	// Rows that will actually be imported (respects all filters)
+	$: displayRows = rowsToImport.filter((row) => {
+		const eventLower = (row.event_name || '').toLowerCase();
+		if (filterPractices && (eventLower.includes('practice') || eventLower.includes('training'))) {
+			return false;
+		}
+		if (customExcludeTerms.length > 0) {
+			if (customExcludeTerms.some((term) => eventLower.includes(term.toLowerCase()))) {
+				return false;
+			}
+		}
+		if (filterAway && homeLocations.length > 0) {
+			const isHome = homeLocations.some((loc) => row.location?.includes(loc));
+			if (!isHome) return false;
+		}
+		return true;
+	});
 </script>
 
 <svelte:head>
@@ -167,24 +313,206 @@
 		<div class="card">
 			<h2>Import Preview</h2>
 			<p class="summary">
-				<strong>{validRows.length}</strong> matches ready to import •
-				<strong class="error-count">{errorRows.length}</strong> rows with errors •
-				<strong class="duplicate-count">{duplicates.length}</strong> duplicate groups
+				<strong>{validRows.length}</strong> unique matches •
+				<strong class="error-count">{errorRows.length}</strong> rows with errors
+				{#if duplicates.length > 0}
+					• <strong class="duplicate-count">{duplicates.length}</strong> duplicate group{duplicates.length > 1 ? 's' : ''} ({resolvedDuplicateRows.length} selected to keep)
+				{/if}
 			</p>
 
 			{#if duplicates.length > 0}
-				<div class="alert alert-warning">
-					<strong>⚠️ Duplicates detected</strong>
-					<p>
-						{duplicates.length} duplicate match group(s) found. Duplicate resolution will be implemented
-						in Story 3.2. For now, all rows will be imported (duplicates included).
+				<div class="section duplicate-section">
+					<button class="section-toggle" on:click={() => (showDuplicates = !showDuplicates)}>
+						<span class="toggle-icon">{showDuplicates ? '▾' : '▸'}</span>
+						<h3>Duplicates Detected ({duplicates.length} group{duplicates.length > 1 ? 's' : ''})</h3>
+					</button>
+					{#if showDuplicates}
+					<p class="section-info">
+						The following rows appear to be duplicates. Select which row(s) to keep from each group.
+						Unselected rows will be skipped.
 					</p>
+
+					{#each duplicates as group, groupIndex}
+						<div class="duplicate-group">
+							<div class="duplicate-group-header">
+								{#if group.signal === 'reference_id'}
+									<strong>Same Reference ID: {group.matches[0]?.reference_id}</strong>
+								{:else if group.signal === 'same_event'}
+									<strong>Same event, age group, location, date and time</strong>
+								{:else}
+									<strong>Same match (team, date, time) with different reference IDs</strong>
+								{/if}
+							</div>
+							<div class="table-container">
+								<table class="preview-table">
+									<thead>
+										<tr>
+											<th>Keep</th>
+											<th>Row</th>
+											<th>Event</th>
+											<th>Team</th>
+											<th>Date</th>
+											<th>Time</th>
+											<th>Location</th>
+											<th>Ref ID</th>
+										</tr>
+									</thead>
+									<tbody>
+										{#each group.matches as match}
+											<tr class:duplicate-selected={duplicateSelections[groupIndex]?.has(match.row_number)}>
+												<td>
+													<input
+														type="checkbox"
+														checked={duplicateSelections[groupIndex]?.has(match.row_number)}
+														on:change={() => toggleDuplicateSelection(groupIndex, match.row_number)}
+													/>
+												</td>
+												<td>{match.row_number}</td>
+												<td>{match.event_name}</td>
+												<td>{match.team_name}</td>
+												<td>{match.start_date}</td>
+												<td>{match.start_time} - {match.end_time}</td>
+												<td>{match.location}</td>
+												<td>{match.reference_id || '—'}</td>
+											</tr>
+										{/each}
+									</tbody>
+								</table>
+							</div>
+						</div>
+					{/each}
+					{/if}
 				</div>
 			{/if}
 
+			<!-- Filter Options (Story 6.4) -->
+			<div class="section filter-section">
+				<button class="section-toggle" on:click={() => (showFilters = !showFilters)}>
+					<span class="toggle-icon">{showFilters ? '▾' : '▸'}</span>
+					<h3>Filter Options{filteredCount > 0 ? ` (${filteredCount} filtered)` : ''}</h3>
+				</button>
+				{#if showFilters}
+				<p class="section-info">
+					Optionally filter out practice matches and away matches before importing.
+				</p>
+
+				<div class="filter-options">
+					<!-- Practice Filter -->
+					<label class="filter-checkbox">
+						<input type="checkbox" bind:checked={filterPractices} />
+						<span class="filter-label">
+							<strong>Filter Practices & Training</strong>
+							<span class="filter-description"
+								>Skip matches with "Practice" or "Training" in the event name</span
+							>
+						</span>
+					</label>
+
+					<!-- Custom Exclude Terms -->
+					<div class="custom-exclude-panel">
+						<label for="customExclude">
+							<strong>Custom Exclude Terms</strong>
+							<span class="filter-description"
+								>Comma-separated terms to match against event name (e.g. "Mini, Scrimmage")</span
+							>
+						</label>
+						<input
+							type="text"
+							id="customExclude"
+							bind:value={customExcludeText}
+							placeholder="e.g. Mini, Scrimmage, Friendly"
+							class="text-input"
+						/>
+						{#if customExcludeTerms.length > 0}
+							<div class="exclude-tags">
+								{#each customExcludeTerms as term}
+									<span class="exclude-tag">{term}</span>
+								{/each}
+							</div>
+						{/if}
+					</div>
+
+					<!-- Away Match Filter -->
+					<label class="filter-checkbox">
+						<input type="checkbox" bind:checked={filterAway} />
+						<span class="filter-label">
+							<strong>Filter Away Matches</strong>
+							<span class="filter-description">Skip matches not at home locations</span>
+						</span>
+					</label>
+
+					<!-- Home Locations Selection (shown when filterAway is checked) -->
+					{#if filterAway && uniqueLocations.length > 0}
+						<div class="home-locations-panel">
+							<div class="locations-header">
+								<h4>Select Home Locations ({homeLocations.length} of {uniqueLocations.length} selected)</h4>
+								<div class="locations-actions">
+									<button
+										type="button"
+										on:click={selectAllLocations}
+										class="btn-link"
+										disabled={homeLocations.length === uniqueLocations.length}
+									>
+										Select All
+									</button>
+									<button
+										type="button"
+										on:click={clearAllLocations}
+										class="btn-link"
+										disabled={homeLocations.length === 0}
+									>
+										Clear All
+									</button>
+								</div>
+							</div>
+
+							<div class="locations-grid">
+								{#each uniqueLocations as location}
+									<label class="location-checkbox">
+										<input
+											type="checkbox"
+											checked={homeLocations.includes(location)}
+											on:change={() => toggleLocation(location)}
+										/>
+										<span class="location-name">{location}</span>
+									</label>
+								{/each}
+							</div>
+
+							{#if homeLocations.length === 0}
+								<div class="alert alert-warning">
+									<strong>⚠️ No home locations selected</strong>
+									<p>All matches will be filtered as away matches. Select at least one home location.</p>
+								</div>
+							{/if}
+						</div>
+					{/if}
+
+					<!-- Filter Preview -->
+					{#if filterPractices || customExcludeTerms.length > 0 || (filterAway && homeLocations.length > 0)}
+						<div class="filter-preview">
+							<strong>Filter Preview:</strong>
+							<div class="filter-stats">
+								<span class="stat-item">
+									<span class="stat-value">{willImportCount}</span> matches will be imported
+								</span>
+								<span class="stat-item filtered">
+									<span class="stat-value">{filteredCount}</span> will be filtered
+								</span>
+							</div>
+						</div>
+					{/if}
+				</div>
+				{/if}
+			</div>
+
 			{#if errorRows.length > 0}
 				<div class="section">
-					<h3>Rows with Errors ({errorRows.length})</h3>
+					<button class="section-toggle" on:click={() => (showErrors = !showErrors)}>
+						<span class="toggle-icon">{showErrors ? '▾' : '▸'}</span>
+						<h3>Rows with Errors ({errorRows.length})</h3>
+					</button>
+					{#if showErrors}
 					<p class="section-info">These rows will be skipped:</p>
 					<div class="table-container">
 						<table class="preview-table">
@@ -218,16 +546,22 @@
 							</tbody>
 						</table>
 					</div>
+					{/if}
 				</div>
 			{/if}
 
 			<div class="section">
-				<h3>Valid Matches ({validRows.length})</h3>
+				<button class="section-toggle" on:click={() => (showValidMatches = !showValidMatches)}>
+					<span class="toggle-icon">{showValidMatches ? '▾' : '▸'}</span>
+					<h3>Matches to Import ({displayRows.length})</h3>
+				</button>
+				{#if showValidMatches}
 				<div class="table-container">
 					<table class="preview-table">
 						<thead>
 							<tr>
 								<th>Row</th>
+								<th>Status</th>
 								<th>Event Name</th>
 								<th>Team</th>
 								<th>Age Group</th>
@@ -237,9 +571,16 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each validRows as row}
+							{#each displayRows as row}
 								<tr>
 									<td>{row.row_number}</td>
+									<td>
+										{#if row.exists_in_db}
+											<span class="badge badge-update">Update</span>
+										{:else}
+											<span class="badge badge-new">New</span>
+										{/if}
+									</td>
 									<td>{row.event_name}</td>
 									<td>{row.team_name}</td>
 									<td>{row.age_group || '—'}</td>
@@ -251,6 +592,7 @@
 						</tbody>
 					</table>
 				</div>
+				{/if}
 			</div>
 
 			<div class="actions">
@@ -258,9 +600,15 @@
 				<button
 					on:click={handleConfirmImport}
 					class="btn btn-primary"
-					disabled={importing || validRows.length === 0}
+					disabled={importing || rowsToImport.length === 0 || (filterAway && homeLocations.length === 0)}
 				>
-					{importing ? 'Importing...' : `Import ${validRows.length} Matches`}
+					{#if importing}
+						Importing...
+					{:else if filteredCount > 0}
+						Import {willImportCount} Matches (Filter {filteredCount})
+					{:else}
+						Import {rowsToImport.length} Matches
+					{/if}
 				</button>
 			</div>
 		</div>
@@ -269,14 +617,42 @@
 			<h2>✅ Import Complete</h2>
 
 			<div class="result-summary">
-				<div class="result-item success">
-					<span class="result-label">Imported:</span>
-					<span class="result-value">{importResult.imported}</span>
-				</div>
-				<div class="result-item">
-					<span class="result-label">Skipped:</span>
-					<span class="result-value">{importResult.skipped}</span>
-				</div>
+				{#if importResult.created !== undefined}
+					<div class="result-item success">
+						<span class="result-label">Created:</span>
+						<span class="result-value">{importResult.created}</span>
+					</div>
+				{/if}
+				{#if importResult.updated !== undefined && importResult.updated > 0}
+					<div class="result-item updated">
+						<span class="result-label">Updated:</span>
+						<span class="result-value">{importResult.updated}</span>
+					</div>
+				{/if}
+				{#if importResult.imported !== undefined}
+					<div class="result-item success">
+						<span class="result-label">Total Imported:</span>
+						<span class="result-value">{importResult.imported}</span>
+					</div>
+				{/if}
+				{#if importResult.skipped !== undefined && importResult.skipped > 0}
+					<div class="result-item">
+						<span class="result-label">Skipped (Errors):</span>
+						<span class="result-value">{importResult.skipped}</span>
+					</div>
+				{/if}
+				{#if importResult.filtered !== undefined && importResult.filtered > 0}
+					<div class="result-item filtered">
+						<span class="result-label">Filtered:</span>
+						<span class="result-value">{importResult.filtered}</span>
+					</div>
+				{/if}
+				{#if importResult.excluded !== undefined && importResult.excluded > 0}
+					<div class="result-item excluded">
+						<span class="result-label">Excluded:</span>
+						<span class="result-value">{importResult.excluded}</span>
+					</div>
+				{/if}
 			</div>
 
 			{#if importResult.errors && importResult.errors.length > 0}
@@ -396,6 +772,32 @@
 		margin-bottom: 2rem;
 	}
 
+	.section-toggle {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		background: none;
+		border: none;
+		cursor: pointer;
+		padding: 0;
+		width: 100%;
+		text-align: left;
+	}
+
+	.section-toggle:hover {
+		opacity: 0.8;
+	}
+
+	.section-toggle h3 {
+		margin-bottom: 0;
+	}
+
+	.toggle-icon {
+		font-size: 1rem;
+		color: var(--text-secondary);
+		flex-shrink: 0;
+	}
+
 	.section-info {
 		color: var(--text-secondary);
 		margin-bottom: 1rem;
@@ -447,6 +849,26 @@
 	.text-muted {
 		color: var(--text-secondary);
 		font-style: italic;
+	}
+
+	.badge {
+		display: inline-block;
+		padding: 0.125rem 0.5rem;
+		border-radius: 1rem;
+		font-size: 0.75rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.025em;
+	}
+
+	.badge-new {
+		background-color: #dcfce7;
+		color: #166534;
+	}
+
+	.badge-update {
+		background-color: #dbeafe;
+		color: #1e40af;
 	}
 
 	.actions {
@@ -519,6 +941,269 @@
 		background-color: var(--bg-secondary);
 	}
 
+	/* Duplicate Resolution Styles */
+	.duplicate-section {
+		background-color: #fffbeb;
+		padding: 1.5rem;
+		border-radius: 0.5rem;
+		border: 1px solid #fbbf24;
+	}
+
+	.duplicate-group {
+		background-color: white;
+		border: 1px solid var(--border-color);
+		border-radius: 0.375rem;
+		margin-bottom: 1rem;
+		overflow: hidden;
+	}
+
+	.duplicate-group-header {
+		padding: 0.75rem 1rem;
+		background-color: #fef3c7;
+		border-bottom: 1px solid #fbbf24;
+		color: #92400e;
+		font-size: 0.875rem;
+	}
+
+	.duplicate-selected {
+		background-color: #f0fdf4;
+	}
+
+	.duplicate-group .preview-table td input[type='checkbox'] {
+		width: 1.125rem;
+		height: 1.125rem;
+		cursor: pointer;
+	}
+
+	/* Filter Options Styles */
+	.filter-section {
+		background-color: var(--bg-secondary);
+		padding: 1.5rem;
+		border-radius: 0.5rem;
+		border: 1px solid var(--border-color);
+	}
+
+	.filter-options {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+	}
+
+	.filter-checkbox {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		cursor: pointer;
+		padding: 1rem;
+		background-color: white;
+		border-radius: 0.375rem;
+		border: 1px solid var(--border-color);
+		transition: all 0.2s;
+	}
+
+	.filter-checkbox:hover {
+		border-color: var(--primary-color);
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+	}
+
+	.filter-checkbox input[type='checkbox'] {
+		margin-top: 0.25rem;
+		width: 1.125rem;
+		height: 1.125rem;
+		cursor: pointer;
+	}
+
+	.filter-label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		flex: 1;
+	}
+
+	.filter-description {
+		color: var(--text-secondary);
+		font-size: 0.875rem;
+		font-weight: normal;
+	}
+
+	.custom-exclude-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 1rem;
+		background-color: white;
+		border-radius: 0.375rem;
+		border: 1px solid var(--border-color);
+	}
+
+	.custom-exclude-panel label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.text-input {
+		padding: 0.5rem 0.75rem;
+		border: 1px solid var(--border-color);
+		border-radius: 0.375rem;
+		font-size: 0.875rem;
+		width: 100%;
+		box-sizing: border-box;
+	}
+
+	.text-input:focus {
+		outline: none;
+		border-color: var(--primary-color);
+		box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+	}
+
+	.exclude-tags {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.exclude-tag {
+		display: inline-block;
+		padding: 0.25rem 0.625rem;
+		background-color: #fef3c7;
+		border: 1px solid #fbbf24;
+		border-radius: 1rem;
+		font-size: 0.75rem;
+		color: #92400e;
+		font-weight: 500;
+	}
+
+	.home-locations-panel {
+		background-color: white;
+		padding: 1.5rem;
+		border-radius: 0.375rem;
+		border: 1px solid var(--border-color);
+		margin-left: 2rem;
+	}
+
+	.locations-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1rem;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
+	.locations-header h4 {
+		font-size: 1rem;
+		font-weight: 600;
+		color: var(--text-primary);
+		margin: 0;
+	}
+
+	.locations-actions {
+		display: flex;
+		gap: 1rem;
+	}
+
+	.btn-link {
+		background: none;
+		border: none;
+		color: var(--primary-color);
+		cursor: pointer;
+		font-size: 0.875rem;
+		padding: 0.25rem 0.5rem;
+		text-decoration: underline;
+		transition: opacity 0.2s;
+	}
+
+	.btn-link:hover:not(:disabled) {
+		opacity: 0.8;
+	}
+
+	.btn-link:disabled {
+		color: var(--text-secondary);
+		cursor: not-allowed;
+		text-decoration: none;
+	}
+
+	.locations-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+
+	.location-checkbox {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem;
+		background-color: var(--bg-secondary);
+		border-radius: 0.25rem;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.location-checkbox:hover {
+		background-color: #e5e7eb;
+	}
+
+	.location-checkbox input[type='checkbox'] {
+		cursor: pointer;
+	}
+
+	.location-name {
+		font-size: 0.875rem;
+		color: var(--text-primary);
+	}
+
+	.filter-preview {
+		background-color: #eff6ff;
+		border: 1px solid #3b82f6;
+		border-radius: 0.375rem;
+		padding: 1rem;
+	}
+
+	.filter-preview strong {
+		color: var(--text-primary);
+		display: block;
+		margin-bottom: 0.5rem;
+	}
+
+	.filter-stats {
+		display: flex;
+		gap: 2rem;
+		flex-wrap: wrap;
+	}
+
+	.stat-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.875rem;
+		color: var(--text-secondary);
+	}
+
+	.stat-item .stat-value {
+		font-size: 1.25rem;
+		font-weight: 700;
+		color: var(--success-color);
+	}
+
+	.stat-item.filtered .stat-value {
+		color: #d97706;
+	}
+
+	.result-item.updated .result-value {
+		color: #3b82f6;
+	}
+
+	.result-item.filtered .result-value {
+		color: #d97706;
+	}
+
+	.result-item.excluded .result-value {
+		color: #6b7280;
+	}
+
 	@media (max-width: 768px) {
 		.header {
 			flex-direction: column;
@@ -545,6 +1230,24 @@
 
 		.btn {
 			width: 100%;
+		}
+
+		.home-locations-panel {
+			margin-left: 0;
+		}
+
+		.locations-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.locations-header {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+
+		.filter-stats {
+			flex-direction: column;
+			gap: 0.5rem;
 		}
 	}
 </style>
