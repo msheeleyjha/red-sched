@@ -55,7 +55,7 @@ You now have a fully functional referee scheduling application with authenticati
 
 ### 1. Get Google OAuth2 Credentials
 
-See `SETUP.md` for detailed instructions, or quick version:
+See [SETUP.md](SETUP.md) for detailed instructions, or quick version:
 
 1. https://console.cloud.google.com/ → New Project
 2. Enable Google+ API
@@ -126,19 +126,16 @@ ref-sched/
 ├── Makefile                         # Dev commands
 ├── .env                             # Environment config
 │
-└── Documentation/
-    ├── README.md                         # Project overview
-    ├── PROJECT_STATUS.md                 # Current status (91% complete)
-    ├── STORIES.md                        # All epics and stories
-    ├── QUICK_START.md                    # 5-minute guide
-    ├── SETUP.md                          # Detailed setup
-    ├── GETTING_STARTED.md                # This file
-    ├── TESTING_GUIDE.md                  # Testing instructions
-    ├── DEPLOYMENT.md                     # Production deployment
-    └── docs/
-        ├── implementation-reports/       # Epic implementation details
-        ├── architecture/                 # Technical architecture
-        └── session-reports/              # Development history
+├── README.md                            # Project overview
+├── CLAUDE.md                            # Claude Code configuration
+└── docs/
+    ├── PROJECT_STATUS.md                # Current status
+    ├── DOCS_INDEX.md                    # Documentation navigation
+    ├── planning/                        # PRDs, stories, decompositions
+    ├── guides/                          # Setup, developer, and deployment guides
+    ├── architecture/                    # Technical architecture & ADRs
+    ├── implementation-reports/          # Epic & story implementation details
+    └── session-reports/                 # Development history & bug fixes
 ```
 
 ---
@@ -221,7 +218,7 @@ See `README.md` for complete API documentation. Key endpoints:
 
 ## Database Schema
 
-See `PROJECT_STATUS.md` for complete schema. Key tables:
+See [`PROJECT_STATUS.md`](../PROJECT_STATUS.md) for complete schema. Key tables:
 
 ### Users
 - Profile info: id, google_id, email, name, first_name, last_name, date_of_birth
@@ -301,7 +298,7 @@ See `PROJECT_STATUS.md` for complete schema. Key tables:
 
 **The MVP is feature-complete!** Only deployment remains.
 
-See `PROJECT_STATUS.md` for detailed status and `STORIES.md` for the full epic breakdown.
+See [PROJECT_STATUS.md](../PROJECT_STATUS.md) for detailed status and [STORIES.md](../planning/STORIES.md) for the full epic breakdown.
 
 ---
 
@@ -417,12 +414,12 @@ SELECT id, email, name, role, status FROM users;
 
 ## Resources
 
-- **PRD**: Full product requirements
-- **STORIES.md**: All epics and stories
-- **SETUP.md**: Detailed Google OAuth setup
-- **QUICK_START.md**: 5-minute quickstart
-- **docs/implementation-reports/**: Complete implementation details for all epics
-- **README.md**: Project overview
+- **[PRD.md](../planning/PRD.md)**: Full product requirements
+- **[STORIES.md](../planning/STORIES.md)**: All epics and stories
+- **[SETUP.md](SETUP.md)**: Detailed Google OAuth setup
+- **[QUICK_START.md](QUICK_START.md)**: 5-minute quickstart
+- **[Implementation Reports](../implementation-reports/)**: Complete implementation details for all epics
+- **[README.md](../../README.md)**: Project overview
 
 ---
 

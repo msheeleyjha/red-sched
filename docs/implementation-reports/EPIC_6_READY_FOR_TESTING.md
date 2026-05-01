@@ -52,9 +52,9 @@
 - ✅ `EPIC_6_COMPLETE.md` - Epic summary
 - ✅ `EPIC_6_FIXES_SUMMARY.md` - Bug fix documentation
 - ✅ `EPIC_6_FRONTEND_IMPLEMENTATION.md` - Frontend details
-- ✅ `FRONTEND_IMPORT_UI_GUIDE.md` - React/Vue reference examples
-- ✅ `MIGRATION_014_FIX.md` - Database cleanup instructions
-- ✅ `MIGRATION_009_SQL_FIXES.md` - SQL fix documentation
+- ✅ [`FRONTEND_IMPORT_UI_GUIDE.md`](../guides/FRONTEND_IMPORT_UI_GUIDE.md) - React/Vue reference examples
+- ✅ [`MIGRATION_014_FIX.md`](../session-reports/MIGRATION_014_FIX.md) - Database cleanup instructions
+- ✅ [`MIGRATION_009_SQL_FIXES.md`](../session-reports/MIGRATION_009_SQL_FIXES.md) - SQL fix documentation
 
 ### Code Quality
 - ✅ Backend builds successfully
@@ -91,7 +91,7 @@ cd /home/matt/repos/ref-sched/backend
 ./referee-scheduler migrate
 ```
 
-**Documentation**: See `MIGRATION_014_FIX.md` for detailed instructions
+**Documentation**: See [`MIGRATION_014_FIX.md`](../session-reports/MIGRATION_014_FIX.md) for detailed instructions
 
 ---
 
@@ -321,7 +321,7 @@ All known issues have been resolved:
 ### If You Encounter Issues
 
 **Database Migration Errors**:
-- See `MIGRATION_014_FIX.md` for cleanup instructions
+- See [`MIGRATION_014_FIX.md`](../session-reports/MIGRATION_014_FIX.md) for cleanup instructions
 - Verify `schema_migrations` table state
 - Check PostgreSQL logs for detailed errors
 

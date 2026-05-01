@@ -70,7 +70,7 @@ Production deployment configuration has been set up for **self-hosted deployment
 - Essential commands
 - Troubleshooting shortcuts
 
-**`DEPLOYMENT.md`** (Alternative)
+**[`DEPLOYMENT.md`](../guides/DEPLOYMENT.md)** (Alternative)
 - Generic deployment guide
 - Nginx-based (for reference)
 - Not used with Traefik setup
@@ -488,8 +488,8 @@ docker-compose -f docker-compose.prod.yml exec db pg_isready
 - **Quick Start:** [QUICK_DEPLOY.md](QUICK_DEPLOY.md)
 - **Full Guide:** [DEPLOYMENT_TRAEFIK.md](DEPLOYMENT_TRAEFIK.md)
 - **Main README:** [README.md](README.md)
-- **Getting Started:** [GETTING_STARTED.md](GETTING_STARTED.md)
-- **Testing:** [TESTING_GUIDE.md](TESTING_GUIDE.md)
+- **Getting Started:** [GETTING_STARTED.md](../guides/GETTING_STARTED.md)
+- **Testing:** [TESTING_GUIDE.md](../guides/TESTING_GUIDE.md)
 
 ---
 

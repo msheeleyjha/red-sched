@@ -929,10 +929,10 @@ t.Logf("Debug: value = %v", myVar)
 
 ## Additional Resources
 
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Complete architecture documentation
-- **[EPIC_8_PROGRESS.md](EPIC_8_PROGRESS.md)** - Refactoring progress and examples
-- **[STORY_8.3_COMPLETE.md](STORY_8.3_COMPLETE.md)** - Example of users feature implementation
-- **[STORY_8.4_COMPLETE.md](STORY_8.4_COMPLETE.md)** - Example of matches feature implementation
+- **[ARCHITECTURE.md](../architecture/ARCHITECTURE.md)** - Complete architecture documentation
+- **[EPIC_8_PROGRESS.md](../implementation-reports/EPIC_8_PROGRESS.md)** - Refactoring progress and examples
+- **[STORY_8.3_COMPLETE.md](../implementation-reports/STORY_8.3_COMPLETE.md)** - Example of users feature implementation
+- **[STORY_8.4_COMPLETE.md](../implementation-reports/STORY_8.4_COMPLETE.md)** - Example of matches feature implementation
 
 ---
 

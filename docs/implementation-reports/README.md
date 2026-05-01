@@ -54,5 +54,5 @@ Each report includes:
 ## Navigation
 
 - Return to [Project Documentation](../../README.md)
-- View [Project Status](../../PROJECT_STATUS.md)
-- See [All User Stories](../../STORIES.md)
+- View [Project Status](../PROJECT_STATUS.md)
+- See [All User Stories](../planning/STORIES.md)

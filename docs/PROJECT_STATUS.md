@@ -250,13 +250,15 @@ ref-sched/
 ├── docker-compose.yml
 ├── .env.example
 ├── README.md
-├── PRD.md
-├── STORIES.md
+├── CLAUDE.md
 └── docs/
-    └── docs/
-        ├── implementation-reports/   # Epic implementation details
-        ├── architecture/             # Technical architecture & ADRs
-        └── session-reports/          # Development history
+    ├── PROJECT_STATUS.md             # This file
+    ├── DOCS_INDEX.md                 # Documentation navigation
+    ├── planning/                     # PRDs, stories, decompositions
+    ├── guides/                       # Setup, developer, and deployment guides
+    ├── architecture/                 # Technical architecture & ADRs
+    ├── implementation-reports/       # Epic & story implementation details
+    └── session-reports/              # Development history & bug fixes
 ```
 
 ---

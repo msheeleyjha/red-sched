@@ -120,7 +120,7 @@ Epic 8 successfully refactored the backend from a flat file structure to **Verti
 - They're well-tested
 - They're fully documented
 - Best migrated when actually enhancing those features
-- See `REMAINING_FILES_ANALYSIS.md` for detailed migration plans
+- See [`REMAINING_FILES_ANALYSIS.md`](../REMAINING_FILES_ANALYSIS.md) for detailed migration plans
 
 ---
 
@@ -307,7 +307,7 @@ Remaining files (audit, roles, auth) work fine as-is. Migrate them when:
 
 ### Files Available for Future Migration (1,762 lines)
 
-See `REMAINING_FILES_ANALYSIS.md` for detailed plans.
+See [`REMAINING_FILES_ANALYSIS.md`](../REMAINING_FILES_ANALYSIS.md) for detailed plans.
 
 **Quick summary**:
 - **availability.go** (280 lines) - 1-2 hours, complete the feature
@@ -546,7 +546,7 @@ Epic 8 successfully transformed our backend from a flat file structure into a cl
 **Thank you for this architectural journey!**
 
 For detailed information, see:
-- `EPIC_8_COMPLETE.md` - Full epic summary
-- `DEVELOPER_GUIDE.md` - How to add features
-- `API_REFERENCE.md` - Complete API catalog
-- `REMAINING_FILES_ANALYSIS.md` - Future migration plans
+- [`EPIC_8_COMPLETE.md`](EPIC_8_COMPLETE.md) - Full epic summary
+- [`DEVELOPER_GUIDE.md`](../guides/DEVELOPER_GUIDE.md) - How to add features
+- [`API_REFERENCE.md`](../architecture/API_REFERENCE.md) - Complete API catalog
+- [`REMAINING_FILES_ANALYSIS.md`](../REMAINING_FILES_ANALYSIS.md) - Future migration plans

@@ -297,7 +297,7 @@ func (h *Handler) getHandler(w http.ResponseWriter, r *http.Request) {
 
 ## API Endpoint Reference
 
-All endpoints are documented in [API_REFERENCE.md](API_REFERENCE.md).
+All endpoints are documented in [API_REFERENCE.md](docs/architecture/API_REFERENCE.md).
 
 Key groups:
 - **Auth**: `/api/auth/*` (public)
@@ -334,8 +334,8 @@ Key groups:
 ## References
 
 - [README.md](README.md) — Feature list, setup, troubleshooting
-- [ARCHITECTURE.md](ARCHITECTURE.md) — Detailed architecture documentation
-- [API_REFERENCE.md](API_REFERENCE.md) — All API endpoints
-- [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) — Full developer onboarding
-- [DOCS_INDEX.md](DOCS_INDEX.md) — Documentation index
-- [PROJECT_STATUS.md](PROJECT_STATUS.md) — Current status & completion
+- [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) — Detailed architecture documentation
+- [API_REFERENCE.md](docs/architecture/API_REFERENCE.md) — All API endpoints
+- [DEVELOPER_GUIDE.md](docs/guides/DEVELOPER_GUIDE.md) — Full developer onboarding
+- [DOCS_INDEX.md](docs/DOCS_INDEX.md) — Documentation index
+- [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) — Current status & completion

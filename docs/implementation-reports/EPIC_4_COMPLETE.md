@@ -438,7 +438,7 @@ All operations logged:
 - `STORY_4.4_COMPLETE.md` - History view (all users)
 - `STORY_4.5_COMPLETE.md` - Personal history view
 - `STORY_4.6_COMPLETE.md` - Retention policy
-- `AUTH_FIX.md` - Authentication bug fix
+- [`AUTH_FIX.md`](../session-reports/AUTH_FIX.md) - Authentication bug fix
 - `EPIC_4_COMPLETE.md` - This document
 
 ### Code Comments

@@ -16,7 +16,7 @@ Refactoring backend from flat file structure to vertical slice architecture orga
 **Status**: ✅ 100% Complete
 
 **Deliverables**:
-- `ARCHITECTURE.md` (480+ lines) - Comprehensive architecture documentation
+- [`ARCHITECTURE.md`](../architecture/ARCHITECTURE.md) (480+ lines) - Comprehensive architecture documentation
   - Project structure with all feature slices defined
   - Layer responsibilities (handler, service, repository, models, routes)
   - Naming conventions and separation of concerns
@@ -648,9 +648,9 @@ Complete smaller tasks while keeping momentum:
 ## Files Created in Epic 8
 
 ### Documentation (19 files, ~10,000 lines)
-- `ARCHITECTURE.md` (480 lines)
-- `DEVELOPER_GUIDE.md` (660 lines) ✅ NEW (Story 8.8)
-- `API_REFERENCE.md` (582 lines) ✅ NEW (Story 8.8)
+- [`ARCHITECTURE.md`](../architecture/ARCHITECTURE.md) (480 lines)
+- [`DEVELOPER_GUIDE.md`](../guides/DEVELOPER_GUIDE.md) (660 lines) ✅ NEW (Story 8.8)
+- [`API_REFERENCE.md`](../architecture/API_REFERENCE.md) (582 lines) ✅ NEW (Story 8.8)
 - `STORY_8.1_COMPLETE.md` (600 lines)
 - `STORY_8.2_COMPLETE.md` (501 lines)
 - `STORY_8.3_COMPLETE.md` (459 lines)
@@ -666,7 +666,7 @@ Complete smaller tasks while keeping momentum:
 - `STORY_8.9_COMPLETE.md` (425 lines) ✅ NEW (Story 8.9)
 - `EPIC_8_COMPLETE.md` (650+ lines) ✅ NEW (Story 8.9)
 - `README.md` (updated in Story 8.8)
-- `DOCS_INDEX.md` (updated in Story 8.8)
+- [`DOCS_INDEX.md`](../DOCS_INDEX.md) (updated in Story 8.8)
 - `EPIC_8_PROGRESS.md` (this file, 1100+ lines)
 
 ### Backend Code (9 files, 661 lines)

@@ -456,7 +456,7 @@ $: willImportCount = validRows.length - filteredCount;
 - `STORY_6.4_COMPLETE.md` - Backend filter implementation
 - `STORY_6.4_ENHANCEMENT.md` - Location extraction feature
 - `STORY_6.6_COMPLETE.md` - Detailed import summary
-- `FRONTEND_IMPORT_UI_GUIDE.md` - React/Vue examples (reference)
+- [`FRONTEND_IMPORT_UI_GUIDE.md`](../guides/FRONTEND_IMPORT_UI_GUIDE.md) - React/Vue examples (reference)
 - `EPIC_6_COMPLETE.md` - Complete epic documentation
 
 ## Conclusion

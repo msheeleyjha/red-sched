@@ -14,7 +14,7 @@ Defined the target vertical slice architecture for the backend, documented the p
 ### ✅ All Criteria Met
 
 - [x] **Document target structure with feature slices**
-  - Defined complete directory structure in `ARCHITECTURE.md`
+  - Defined complete directory structure in [`ARCHITECTURE.md`](../architecture/ARCHITECTURE.md)
   - Feature slices: `matches/`, `assignments/`, `users/`, `auth/`, `audit/`, `roles/`, `referees/`, `availability/`, `eligibility/`, `acknowledgment/`
   - Each slice documented with purpose and contents
 
@@ -40,7 +40,7 @@ Defined the target vertical slice architecture for the backend, documented the p
   - Examples provided for each layer
 
 - [x] **Create ADR (Architecture Decision Record) documenting rationale**
-  - ADR-001 included in `ARCHITECTURE.md`
+  - ADR-001 included in [`ARCHITECTURE.md`](../architecture/ARCHITECTURE.md)
   - Documents context, decision, consequences
   - Lists alternatives considered
   - Includes approval status
@@ -420,7 +420,7 @@ func TestMatchFeature_CreateMatch(t *testing.T) {
 
 ## References
 
-Included in `ARCHITECTURE.md`:
+Included in [`ARCHITECTURE.md`](../architecture/ARCHITECTURE.md):
 - Jimmy Bogard's Vertical Slice Architecture
 - Robert C. Martin's Screaming Architecture
 - Industry best practices
@@ -447,7 +447,7 @@ Included in `ARCHITECTURE.md`:
 
 ## Files Created
 
-- `ARCHITECTURE.md` (480+ lines)
+- [`ARCHITECTURE.md`](../architecture/ARCHITECTURE.md) (480+ lines)
 - `STORY_8.1_COMPLETE.md` (this file)
 
 **Total**: ~600 lines of documentation

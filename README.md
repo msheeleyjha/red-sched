@@ -52,7 +52,7 @@ This project uses **Vertical Slice Architecture** where each feature is organize
 - Handler layer for HTTP request/response
 - Shared infrastructure (config, database, middleware, errors)
 
-📘 **See [ARCHITECTURE.md](ARCHITECTURE.md) for complete architecture documentation**
+📘 **See [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) for complete architecture documentation**
 
 ## Prerequisites
 
@@ -166,11 +166,16 @@ referee-scheduler/
 │   └── package.json             # Node dependencies
 ├── docker-compose.yml            # Docker orchestration
 ├── .env.example                  # Environment variables template
-├── ARCHITECTURE.md               # Architecture documentation
+├── docs/                             # All documentation
+│   ├── planning/                    # PRDs, stories, decompositions
+│   ├── guides/                      # Setup, developer, deployment guides
+│   ├── architecture/                # Architecture & ADRs
+│   ├── implementation-reports/      # Epic & story reports
+│   └── session-reports/             # Development history
 └── README.md                     # This file
 ```
 
-**Architecture**: This project uses **Vertical Slice Architecture** where each feature is self-contained with its own models, repository, service, handler, and tests. See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
+**Architecture**: This project uses **Vertical Slice Architecture** where each feature is self-contained with its own models, repository, service, handler, and tests. See [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) for details.
 
 ## Development
 
@@ -208,7 +213,7 @@ Follow the vertical slice pattern:
 4. Register routes in `main.go`
 5. Update documentation
 
-📘 **See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for complete developer onboarding**
+📘 **See [DEVELOPER_GUIDE.md](docs/guides/DEVELOPER_GUIDE.md) for complete developer onboarding**
 
 ### Common Commands
 
@@ -224,7 +229,7 @@ Follow the vertical slice pattern:
 
 ## API Endpoints
 
-All endpoints organized by feature slice. See [ARCHITECTURE.md](ARCHITECTURE.md) for implementation details.
+All endpoints organized by feature slice. See [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md) for implementation details.
 
 ### 🔐 Authentication (Public)
 - `GET /health` - Health check
@@ -296,7 +301,7 @@ The system uses **Role-Based Access Control (RBAC)** with granular permissions:
 - Multiple roles can be assigned to a single user
 - Permissions are checked on every API request
 
-See [EPIC_1_SUMMARY.md](EPIC_1_SUMMARY.md) for RBAC implementation details.
+See [EPIC_1_SUMMARY.md](docs/implementation-reports/EPIC_1_SUMMARY.md) for RBAC implementation details.
 
 ## Troubleshooting
 
@@ -315,13 +320,13 @@ See [EPIC_1_SUMMARY.md](EPIC_1_SUMMARY.md) for RBAC implementation details.
 
 ## Documentation
 
-See **[DOCS_INDEX.md](DOCS_INDEX.md)** for a complete guide to all documentation.
+See **[DOCS_INDEX.md](docs/DOCS_INDEX.md)** for a complete guide to all documentation.
 
 Key documents:
-- **[GETTING_STARTED.md](GETTING_STARTED.md)** - Setup and usage guide
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
-- **[PROJECT_STATUS.md](PROJECT_STATUS.md)** - Current status (91% complete)
-- **[STORIES.md](STORIES.md)** - All epics and user stories
+- **[GETTING_STARTED.md](docs/guides/GETTING_STARTED.md)** - Setup and usage guide
+- **[DEPLOYMENT.md](docs/guides/DEPLOYMENT.md)** - Production deployment guide
+- **[PROJECT_STATUS.md](docs/PROJECT_STATUS.md)** - Current status (91% complete)
+- **[STORIES.md](docs/planning/STORIES.md)** - All epics and user stories
 
 ## Project Status
 
@@ -338,7 +343,7 @@ Key documents:
 
 **Current Architecture**: Vertical Slice Architecture with 7 feature slices and shared infrastructure.
 
-See [PROJECT_STATUS.md](PROJECT_STATUS.md) for detailed status.
+See [PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for detailed status.
 
 ## License
 

@@ -98,4 +98,4 @@ Epics 1-6 are complete! You now have:
 
 **The MVP is feature-complete!** Only deployment (Epic 7) remains.
 
-See `PROJECT_STATUS.md` for detailed status and all EPIC implementation reports for full details.
+See [`PROJECT_STATUS.md`](../PROJECT_STATUS.md) for detailed status and all [EPIC implementation reports](../implementation-reports/) for full details.

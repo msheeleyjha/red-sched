@@ -29,7 +29,7 @@ Epic 6 CSV Import feature was implemented successfully, but the backend had seve
 - `635f93a` Fix migration 014: Use correct table and column names from migration 009
 - `7a86d46` Update migration 014 fix documentation
 
-**Documentation**: `MIGRATION_014_FIX.md`
+**Documentation**: [`MIGRATION_014_FIX.md`](../session-reports/MIGRATION_014_FIX.md)
 
 ---
 
@@ -70,7 +70,7 @@ But **no application code was updated** to match!
 - `395adc7` Fix all backend SQL: Update to use renamed table and columns from migration 009
 - `8bb1402` Fix remaining SQL: Update match_retention.go and availability.go
 
-**Documentation**: `MIGRATION_009_SQL_FIXES.md`
+**Documentation**: [`MIGRATION_009_SQL_FIXES.md`](../session-reports/MIGRATION_009_SQL_FIXES.md)
 
 ---
 
@@ -297,8 +297,8 @@ After database cleanup and migration re-run:
 - `availability.go`
 
 ### Documentation Created
-- `MIGRATION_014_FIX.md` - Database cleanup instructions
-- `MIGRATION_009_SQL_FIXES.md` - Complete SQL fix documentation
+- [`MIGRATION_014_FIX.md`](../session-reports/MIGRATION_014_FIX.md) - Database cleanup instructions
+- [`MIGRATION_009_SQL_FIXES.md`](../session-reports/MIGRATION_009_SQL_FIXES.md) - Complete SQL fix documentation
 - `EPIC_6_COMPLETE.md` - Epic 6 feature documentation
 - `EPIC_6_FIXES_SUMMARY.md` - This document
 
